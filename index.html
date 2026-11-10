@@ -74,6 +74,72 @@
     --topbar:rgba(18,22,26,.85);
     --chip-neutral:rgba(255,255,255,.09);
   }
+
+  /* ---------- Liquid Glass ----------
+     Material reservado às superfícies de chrome — barra superior, modal e toast.
+     Nunca sobre conteúdo: texto de dados precisa de fundo opaco para ser lido.
+
+     A base é SÓLIDA. O vidro é um acréscimo que só entra quando três condições
+     se confirmam, e cada uma delas pode devolver tudo ao sólido sozinha:
+       1. o navegador suporta backdrop-filter  (@supports, abaixo)
+       2. o sistema não pede transparência reduzida  (@media, abaixo)
+       3. o usuário não desligou em Config → Aparência  ([data-glass="off"])
+     Por isso o fallback nunca precisa ser escrito duas vezes: ele é o padrão. */
+  :root{
+    --glass-blur:none;
+    --glass-bar:var(--paper);
+    --glass-panel:var(--surface);
+    --glass-scrim:rgba(20,27,34,.42);
+    --glass-scrim-blur:none;
+    --glass-toast:var(--side-bg);
+    --glass-edge:transparent;
+  }
+  /* CUIDADO ao mexer daqui para baixo: todos os blocos usam :root como base e a
+     ordem de origem é que decide, porque a especificidade é igual de propósito.
+     Trocar :root por html aqui quebra tudo em silêncio — html é seletor de tipo
+     (0,0,1) e perde para o :root (0,1,0) do bloco sólido lá em cima. */
+  @supports ((backdrop-filter:blur(2px)) or (-webkit-backdrop-filter:blur(2px))){
+    :root{
+      --glass-blur:saturate(165%) blur(16px);
+      --glass-bar:rgba(241,239,233,.68);
+      --glass-panel:rgba(255,255,255,.82);
+      --glass-scrim:rgba(20,27,34,.34);
+      --glass-scrim-blur:blur(3px);
+      --glass-toast:rgba(20,27,34,.78);
+      --glass-edge:rgba(255,255,255,.55);
+    }
+    :root[data-theme="dark"]{
+      --glass-bar:rgba(18,22,26,.66);
+      --glass-panel:rgba(26,32,38,.84);
+      --glass-scrim:rgba(0,0,0,.52);
+      --glass-toast:rgba(11,14,17,.80);
+      --glass-edge:rgba(255,255,255,.10);
+    }
+  }
+  /* Camada 2: o sistema pede menos transparência — o material sai inteiro.
+     O seletor escuro precisa existir aqui também: sem ele, :root[data-theme="dark"]
+     do bloco acima (0,2,0) venceria um :root solitário (0,1,0) no tema escuro. */
+  @media (prefers-reduced-transparency:reduce){
+    :root,:root[data-theme="dark"]{
+      --glass-blur:none; --glass-scrim-blur:none; --glass-edge:transparent;
+      --glass-bar:var(--paper); --glass-panel:var(--surface);
+      --glass-scrim:rgba(20,27,34,.42); --glass-toast:var(--side-bg);
+    }
+  }
+  /* Camada 3: o usuário desligou. Vence as duas anteriores por especificidade
+     (0,2,0 e 0,3,0) e, nos empates, por vir depois. */
+  :root[data-glass="off"],:root[data-theme="dark"][data-glass="off"]{
+    --glass-blur:none; --glass-scrim-blur:none; --glass-edge:transparent;
+    --glass-bar:var(--paper); --glass-panel:var(--surface);
+    --glass-scrim:rgba(20,27,34,.42); --glass-toast:var(--side-bg);
+  }
+  /* O brilho de borda é o que faz o vidro parecer vidro e não só um borrão:
+     uma linha clara no topo, como a quina de uma lâmina. Some junto com o resto.
+     Aplicado via :after em elementos que JÁ são posicionados (sticky/fixed) —
+     uma classe com position:relative quebraria o sticky da barra. */
+  .topbar:after{content:"";position:absolute;left:0;right:0;top:0;height:1px;
+    background:var(--glass-edge);pointer-events:none}
+
   *{box-sizing:border-box}
   html,body{margin:0;height:100%}
   body{
@@ -109,7 +175,8 @@
   .side-foot{margin-top:auto;font-size:11px;color:var(--ink-3);line-height:1.5;padding:10px 6px 0;border-top:1px solid rgba(255,255,255,.06)}
 
   .main{overflow:auto;display:flex;flex-direction:column;min-width:0}
-  .topbar{position:sticky;top:0;z-index:20;background:var(--topbar);backdrop-filter:blur(10px);
+  .topbar{position:sticky;top:0;z-index:20;background:var(--glass-bar);
+    -webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);
     border-bottom:1px solid var(--line);padding:14px 26px;display:flex;align-items:center;gap:16px}
   .topbar h1{font-size:19px;margin:0;letter-spacing:-.01em}
   .topbar .sub{color:var(--ink-3);font-size:12.5px;margin-top:1px}
@@ -230,6 +297,28 @@
   .ev .d{font-size:11.5px;color:var(--ink-3);font-weight:600}
   .ev .b{font-size:13px;margin-top:1px}
 
+  /* ---------- Fila de trabalho ----------
+     Regra de leitura: o FATO é o que está no banco e pode ser conferido.
+     A SUGESTÃO é opinião do sistema. Nunca têm o mesmo peso tipográfico,
+     porque confundir os dois é como ler um palpite achando que é laudo. */
+  .fila-item{display:grid;grid-template-columns:3px 1fr auto;gap:13px;padding:12px 16px;
+    border-bottom:1px solid var(--line-soft);align-items:center}
+  .fila-item:last-child{border-bottom:0}
+  .fila-peso{align-self:stretch;border-radius:3px;min-height:34px}
+  .fila-topo{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .fila-fato{font-size:13.5px;font-weight:600;line-height:1.35}
+  .fila-sug{font-size:12.5px;color:var(--ink-3);margin-top:4px;display:flex;gap:7px;align-items:baseline}
+  .fila-sug b{flex:none;font-size:10px;letter-spacing:.09em;text-transform:uppercase;
+    font-weight:800;opacity:.75;padding-top:1px}
+  .fila-sug i{font-style:normal}
+  .fila-acoes{display:flex;gap:7px;align-items:center;flex:none}
+  .fila-legenda{font-size:12px;color:var(--ink-3);padding:9px 16px;background:var(--surface-2);
+    border-bottom:1px solid var(--line-soft);line-height:1.5}
+  @media (max-width:700px){
+    .fila-item{grid-template-columns:3px 1fr;row-gap:9px}
+    .fila-acoes{grid-column:2;justify-content:flex-start}
+  }
+
   /* ---------- Recompra ---------- */
   .radar-legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--ink-2)}
   .radar-legend span{display:inline-flex;align-items:center;gap:6px}
@@ -245,13 +334,23 @@
   .funnel-row .n{width:104px;text-align:right;font-size:12.5px;font-weight:700;font-variant-numeric:tabular-nums;flex:none}
 
   /* ---------- Forms / modal ---------- */
-  .modal-bg{position:fixed;inset:0;background:rgba(20,27,34,.42);backdrop-filter:blur(2px);z-index:100;display:grid;place-items:center;padding:20px}
-  .modal{background:var(--surface);border-radius:14px;box-shadow:var(--e3);width:100%;max-width:560px;max-height:90vh;overflow:auto}
+  .modal-bg{position:fixed;inset:0;background:var(--glass-scrim);
+    -webkit-backdrop-filter:var(--glass-scrim-blur);backdrop-filter:var(--glass-scrim-blur);
+    z-index:100;display:grid;place-items:center;padding:20px}
+  .modal{background:var(--glass-panel);
+    -webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);
+    border-radius:14px;box-shadow:var(--e3);width:100%;max-width:560px;max-height:90vh;overflow:auto}
   .modal.wide{max-width:720px}
-  .modal-h{position:sticky;top:0;background:var(--surface);display:flex;align-items:center;padding:16px 20px;border-bottom:1px solid var(--line-soft);z-index:2}
+  /* Cabeçalho e rodapé do modal rolam sobre o corpo: precisam do mesmo material,
+     senão o texto do corpo aparece cru por baixo ao rolar. */
+  .modal-h{position:sticky;top:0;background:var(--glass-panel);
+    -webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);
+    display:flex;align-items:center;padding:16px 20px;border-bottom:1px solid var(--line-soft);z-index:2}
   .modal-h h3{margin:0;font-size:16px}
   .modal-b{padding:18px 20px}
-  .modal-f{position:sticky;bottom:0;background:var(--surface);padding:14px 20px;border-top:1px solid var(--line-soft);display:flex;gap:10px;justify-content:flex-end}
+  .modal-f{position:sticky;bottom:0;background:var(--glass-panel);
+    -webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);
+    padding:14px 20px;border-top:1px solid var(--line-soft);display:flex;gap:10px;justify-content:flex-end}
   .field{margin-bottom:13px}
   .field label{display:block;font-size:12px;font-weight:600;color:var(--ink-2);margin-bottom:5px}
   .field input,.field select,.field textarea{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--ink)}
@@ -273,7 +372,9 @@
   .seg button{border:0;background:transparent;padding:7px 12px;font-size:12.5px;font-weight:600;color:var(--ink-2);border-right:1px solid var(--line-soft)}
   .seg button:last-child{border-right:0}
   .seg button.on{background:var(--accent);color:#fff}
-  .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--side-bg);color:var(--side-hi);padding:11px 18px;border-radius:10px;font-size:13.5px;font-weight:600;box-shadow:0 12px 30px rgba(0,0,0,.25);z-index:200;opacity:0;transition:opacity .2s,transform .2s}
+  .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--glass-toast);
+    -webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);
+    color:var(--side-hi);padding:11px 18px;border-radius:10px;font-size:13.5px;font-weight:600;box-shadow:0 12px 30px rgba(0,0,0,.25);z-index:200;opacity:0;transition:opacity .2s,transform .2s}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(-4px)}
 
   @media (max-width:960px){
@@ -579,6 +680,83 @@ function tarefasPendentes(){ return DB.tarefas.filter(t=>!t.feito); }
 function tarefasVencidas(){ const t=today(); return DB.tarefas.filter(x=>!x.feito && d(x.venceEm)<=t); }
 
 /* ============================================================
+   FILA DE TRABALHO
+   Uma lista só, atravessando os seis módulos, ordenada por evidência.
+
+   O compromisso que sustenta a tela: cada linha separa o FATO (o que está
+   no banco e o usuário pode conferir) da SUGESTÃO (o que o sistema acha
+   que fazer). O peso é calculado sobre o fato, nunca sobre a sugestão —
+   um CRM que embaralha os dois ensina o operador a confiar em palpite.
+   ============================================================ */
+function escFila(s){
+  // Local e autocontida de propósito: títulos de tarefa e nomes de cliente são
+  // texto livre do usuário e entram em template string. Não dependo de helper
+  // declarado em outro ponto do arquivo.
+  return String(s==null?"":s).replace(/[&<>"']/g, ch =>
+    ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
+}
+function diasEntre(a,b){ return Math.round((a-b)/86400000); }
+function plural(n,s,p){ return n+" "+(Math.abs(n)===1?s:p); }
+
+function filaTrabalho(){
+  const t=today(), itens=[];
+
+  // 1. Tarefa vencida — o fato é a data, não a importância da tarefa.
+  tarefasVencidas().forEach(tr=>{
+    const c=cliente(tr.clienteId), atraso=diasEntre(t,d(tr.venceEm));
+    itens.push({ peso:100+atraso, tom:"alert", tipo:"Tarefa", cliente:c,
+      fato:`"${escFila(tr.titulo)}" ${atraso<=0?"vence hoje":"venceu há "+plural(atraso,"dia","dias")}`,
+      sugestao:"Resolver e dar baixa, ou remarcar com data real",
+      acao:`<button class="btn sm" onclick="toggleTarefa('${tr.id}')">Concluir</button>` });
+  });
+
+  // 2. Recompra — só alerta e atenção. "Aproximando do ciclo" não é trabalho de hoje.
+  recompraList().filter(x=>x.info.status==="alert"||x.info.status==="warn").forEach(x=>{
+    const venc = x.info.status==="alert";
+    itens.push({ peso:x.info.score, tom:venc?"alert":"warn", tipo:"Recompra", cliente:x.c,
+      fato:`${escFila(x.c.nome)} — ${escFila(x.info.motivo)}`,
+      sugestao: venc
+        ? "Chamar para nova consulta: sem receita válida não há venda correta"
+        : "Avisar agora, enquanto ainda dá tempo de agendar antes de vencer" });
+  });
+
+  // 3. Óculos pronto e não retirado — custo de ocupar gaveta e de cliente esperando.
+  DB.os.filter(o=>o.status==="pronto").forEach(o=>{
+    const c=cliente(o.clienteId), parado=o.chegouEm? diasEntre(t,d(o.chegouEm)) : null;
+    itens.push({ peso:85+(parado||0), tom:"warn", tipo:"Oficina", cliente:c,
+      fato:`OS ${escFila(o.numero)} pronta para retirada${parado!==null&&parado>0?" há "+plural(parado,"dia","dias"):""}`,
+      sugestao:"Avisar que o óculos chegou e combinar a retirada" });
+  });
+
+  // 4. Parcela em atraso.
+  parcelasAtrasadas().forEach(p=>{
+    const c=cliente(p.clienteId), atraso=diasEntre(t,d(p.venceEm));
+    itens.push({ peso:75+atraso, tom:"alert", tipo:"Financeiro", cliente:c,
+      fato:`Parcela ${p.n}/${p.total} de ${brl(p.valor)} vencida há ${plural(atraso,"dia","dias")}`,
+      sugestao:"Lembrete cordial primeiro — cobrança dura queima cliente que volta" });
+  });
+
+  // 5. Negócio parado no funil. 14 dias é o limiar; abaixo disso é negociação normal.
+  pipelineAberto().forEach(n=>{
+    const ref=n.atualizadoEm||n.criadoEm; if(!ref) return;
+    const parado=diasEntre(t,d(ref)); if(parado<14) return;
+    const c=cliente(n.clienteId), st=stage(n.etapa);
+    itens.push({ peso:45+parado, tom:"neutral", tipo:"Funil", cliente:c,
+      fato:`"${escFila(n.titulo)}" parado em ${escFila(st?st.nome:n.etapa)} há ${plural(parado,"dia","dias")}`,
+      sugestao:"Retomar ou marcar como perdido — funil parado falseia a previsão" });
+  });
+
+  // 6. Aniversário na semana. Último em peso, de propósito.
+  aniversariantes(7).forEach(a=>{
+    itens.push({ peso:30+(7-a.dias), tom:"ok", tipo:"Relacionamento", cliente:a.c,
+      fato:`${escFila(a.c.nome)} faz ${a.idade} anos ${a.dias===0?"hoje":"em "+plural(a.dias,"dia","dias")}`,
+      sugestao:"Parabenizar sem oferta junto: a mensagem perde o sentido com preço dentro" });
+  });
+
+  return itens.sort((a,b)=>b.peso-a.peso).slice(0,25);
+}
+
+/* ============================================================
    Navegação / render
    ============================================================ */
 const VIEWS = [
@@ -637,6 +815,41 @@ function initTema(){
   if(!t) t = window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "dark":"light";
   aplicarTema(t);
 }
+
+/* ---------- Liquid Glass: as três portas de saída ----------
+   O CSS já resolve as duas primeiras sozinho (suporte do navegador e
+   preferência do sistema). Estas funções cobrem a terceira — a escolha
+   explícita do usuário — e servem de diagnóstico na tela de Config:
+   sem elas, um vidro ausente por falta de suporte pareceria defeito. */
+const GKEY="iris_vidro";
+function suportaVidro(){
+  try{ return !!(window.CSS && CSS.supports &&
+    (CSS.supports("backdrop-filter","blur(2px)") || CSS.supports("-webkit-backdrop-filter","blur(2px)"))); }
+  catch(e){ return false; }
+}
+function sistemaPedeMenosTransparencia(){
+  try{ return !!(window.matchMedia && matchMedia("(prefers-reduced-transparency: reduce)").matches); }
+  catch(e){ return false; }
+}
+function vidroEscolhido(){           // o que o usuário pediu, não o que está valendo
+  let v=null; try{ v=localStorage.getItem(GKEY); }catch(e){}
+  return v==="off" ? "off" : "on";   // padrão: ligado
+}
+function vidroAtivo(){               // o que de fato está valendo, com as 3 camadas
+  return vidroEscolhido()==="on" && suportaVidro() && !sistemaPedeMenosTransparencia();
+}
+function aplicarVidro(v){
+  if(v==="off") document.documentElement.setAttribute("data-glass","off");
+  else document.documentElement.removeAttribute("data-glass");
+}
+function toggleVidro(){
+  const v = vidroEscolhido()==="off" ? "on" : "off";
+  try{ localStorage.setItem(GKEY,v); }catch(e){}
+  aplicarVidro(v);
+  render();
+  toast(v==="on" ? "Vidro translúcido ligado." : "Vidro desligado — superfícies sólidas.");
+}
+function initVidro(){ aplicarVidro(vidroEscolhido()); }
 
 /* Transição entre telas: o navegador faz o cross-fade, comunicando que o
    contexto mudou sem quebrar a leitura. Degrada em silêncio onde não há suporte. */
@@ -1085,9 +1298,48 @@ function renderAgenda(app){
       <td style="text-align:right;width:56px">${c?`<a class="btn wa sm" target="_blank" href="${waLink(c.telefone,'Olá, '+c.nome.split(' ')[0]+'!')}">wa</a>`:''}</td>
     </tr>`; }).join("");
   app.innerHTML=`
+  ${renderFila()}
   <div class="card" style="margin-bottom:16px"><div class="card-h"><h3>Pendentes</h3><span class="count">${pend.length}</span></div>
     ${pend.length?`<table><tbody>${grp(pend)}</tbody></table>`:emptyBox('Tudo em dia. Nenhuma tarefa pendente.')}</div>
   ${feitas.length?`<div class="card"><div class="card-h"><h3>Concluídas recentes</h3></div><table><tbody>${grp(feitas)}</tbody></table></div>`:''}`;
+}
+
+function renderFila(){
+  const fila=filaTrabalho();
+  if(!fila.length) return `<div class="card" style="margin-bottom:16px">
+    <div class="card-h"><h3>Fila de trabalho</h3></div>
+    ${emptyBox('Nada exige ação hoje — nenhum atraso, receita vencida ou óculos parado.')}</div>`;
+
+  const maxPeso=Math.max(...fila.map(i=>i.peso))||1;
+  const cor={alert:"var(--alert)",warn:"var(--warn)",ok:"var(--ok)",neutral:"var(--ink-3)"};
+
+  const linhas=fila.map(i=>{
+    const c=i.cliente;
+    // A barra mede a evidência, não a urgência sentida: altura proporcional ao peso
+    // calculado sobre dias de atraso e vencimento. Opacidade parcial evita que a
+    // barra pese mais no olho do que o próprio fato.
+    const alt=Math.max(18,Math.round(i.peso/maxPeso*100));
+    const wa = c ? `<a class="btn wa sm" target="_blank" rel="noopener"
+      href="${waLink(c.telefone,'Olá, '+c.nome.split(' ')[0]+'!')}">wa</a>` : '';
+    const ficha = c ? `<button class="btn sm ghost" onclick="abrirCliente('${c.id}')">ficha</button>` : '';
+    return `<div class="fila-item">
+      <div class="fila-peso" style="background:${cor[i.tom]||cor.neutral};opacity:.55;height:${alt}%"></div>
+      <div style="min-width:0">
+        <div class="fila-topo">
+          <span class="chip ${i.tom==="neutral"?"neutral":i.tom}">${i.tipo}</span>
+          <span class="fila-fato">${i.fato}</span>
+        </div>
+        <div class="fila-sug"><b>Sugestão</b><i>${i.sugestao}</i></div>
+      </div>
+      <div class="fila-acoes">${i.acao||''}${ficha}${wa}</div>
+    </div>`;
+  }).join("");
+
+  return `<div class="card" style="margin-bottom:16px">
+    <div class="card-h"><h3>Fila de trabalho</h3><span class="count">${fila.length} ${fila.length===1?'item':'itens'}</span></div>
+    <div class="fila-legenda">Uma lista só, atravessando tarefas, recompra, oficina, crediário, funil e aniversários — ordenada por evidência.
+      O <b>fato</b> é o que está no banco e você pode conferir. A <b>sugestão</b> é opinião do sistema: discorde dela à vontade.</div>
+    ${linhas}</div>`;
 }
 function tarefaTipoLabel(t){ return {ligacao:"Ligação",whatsapp:"WhatsApp",posvenda:"Pós-venda",recompra:"Recompra",geral:"Geral"}[t]||"Geral"; }
 function toggleTarefa(id){ const t=DB.tarefas.find(x=>x.id===id); if(!t)return; t.feito=!t.feito; save(); render(); }
@@ -1126,6 +1378,26 @@ function renderConfig(app){
       <div style="margin-top:14px;border-top:1px solid var(--line-soft);padding-top:12px">
         <button class="btn" style="color:var(--alert);border-color:var(--alert-wash)" onclick="resetDados()">Restaurar dados de exemplo</button>
       </div>
+    </div></div>
+    <div class="card"><div class="card-h"><h3>Aparência</h3></div><div class="modal-b">
+      ${(()=>{
+        const quer=vidroEscolhido()==="on", sup=suportaVidro(), red=sistemaPedeMenosTransparencia(), vale=vidroAtivo();
+        // Dizer só "ligado/desligado" esconderia o motivo quando o usuário pede
+        // vidro e não vê vidro. O estado real e a causa vêm juntos.
+        const causa = !quer ? "Você desligou aqui."
+                    : !sup ? "Este navegador não suporta o efeito — as superfícies ficam sólidas."
+                    : red  ? "Seu sistema está configurado para reduzir transparência, e isso tem precedência."
+                           : "";
+        return `
+        <label style="display:flex;align-items:center;gap:10px;font-size:13.5px;font-weight:600;cursor:pointer">
+          <input type="checkbox" ${quer?'checked':''} onchange="toggleVidro()"> Vidro translúcido
+        </label>
+        <p class="muted" style="font-size:12.5px;margin:9px 0 0">Aplica desfoque e translucidez à barra superior, aos modais e ao aviso de rodapé. Nunca ao conteúdo: tabela e número precisam de fundo opaco para serem lidos.</p>
+        <div style="margin-top:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span class="chip ${vale?'accent':'neutral'}">${vale?'Ativo agora':'Sólido agora'}</span>
+          ${causa?`<span class="muted" style="font-size:12px">${causa}</span>`:''}
+        </div>`;
+      })()}
     </div></div>
     <div class="card"><div class="card-h"><h3>Sobre o Íris</h3></div><div class="modal-b" style="font-size:13px;color:var(--ink-2)">
       <p style="margin-top:0">CRM de arquivo único, específico para óticas. Roda offline e é hospedável no Cloudflare Pages.</p>
@@ -1521,6 +1793,7 @@ function emptyBox(msg){ return `<div class="empty"><svg viewBox="0 0 24 24" fill
 
 /* ---------- boot ---------- */
 initTema();
+initVidro();
 render();
 </script>
 </body>
