@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Íris — criar o primeiro usuário</title>
+<!--
+  Gerador do primeiro admin do Íris.
+
+  Roda inteiro no seu navegador, offline. A senha NÃO sai desta página:
+  o que ela produz é o hash PBKDF2-SHA256 (100.000 voltas), o mesmo
+  formato que functions/api/iris.js confere no login. O que você cola no
+  Console do D1 é só o hash — a senha em si não fica escrita em lugar
+  nenhum, nem no banco, nem neste arquivo.
+
+  Se um dia o número de iterações mudar na API, mude aqui também, senão
+  o login passa a recusar senha certa.
+-->
+<style>
+  :root{
+    color-scheme:light;
+    --ink:#141b22; --ink-2:#3f4b56; --ink-3:#6b7885;
+    --paper:#f1efe9; --surface:#fff;
+    --line:rgba(20,27,34,.12); --line-soft:rgba(20,27,34,.07);
+    --accent:#0d6e6b; --accent-ink:#0a4f4d; --accent-wash:#e5f0ef;
+    --warn:#b3760a; --warn-wash:#fbf0dc;
+    --ok:#2d8a4e; --ok-wash:#e6f2ea;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{ color-scheme:dark; --ink:#e8eaec; --ink-2:#b3bcc4; --ink-3:#85939d;
+      --paper:#12161a; --surface:#1a2026; --line:rgba(255,255,255,.11);
+      --line-soft:rgba(255,255,255,.06); --accent:#2fa8a2; --accent-ink:#7fd4cf;
+      --accent-wash:rgba(47,168,162,.16); --warn:#d99b2b; --warn-wash:rgba(217,155,43,.16);
+      --ok:#4cb972; --ok-wash:rgba(76,185,114,.16); }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);
+    font-size:14px;line-height:1.5;padding:28px 18px 60px}
+  .wrap{max-width:620px;margin:0 auto}
+  .mark{width:40px;height:40px;border-radius:11px;background:linear-gradient(150deg,var(--accent),#12908c);
+    display:grid;place-items:center;margin-bottom:14px}
+  h1{font-size:22px;margin:0 0 4px;letter-spacing:-.01em}
+  .sub{color:var(--ink-3);font-size:13px;margin-bottom:22px}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:22px}
+  .field{margin-bottom:14px}
+  label{display:block;font-size:12px;font-weight:600;color:var(--ink-2);margin-bottom:5px}
+  input,select{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:9px;
+    background:var(--surface);color:var(--ink);font-family:inherit;font-size:14px}
+  input:focus,select:focus{outline:2px solid var(--accent-wash);border-color:var(--accent)}
+  .dica{font-size:12px;color:var(--ink-3);margin-top:5px}
+  .btn{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--accent);background:var(--accent);
+    color:#fff;padding:10px 16px;border-radius:9px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit}
+  .btn:hover{background:var(--accent-ink)}
+  .btn[disabled]{opacity:.55;cursor:default}
+  .btn.sec{background:transparent;color:var(--ink);border-color:var(--line)}
+  .aviso{background:var(--warn-wash);color:var(--warn);border-radius:10px;padding:11px 13px;
+    font-size:12.5px;font-weight:600;margin-bottom:18px}
+  .saida{margin-top:22px;display:none}
+  pre{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:14px;
+    font-family:var(--mono);font-size:12px;white-space:pre-wrap;word-break:break-all;margin:0 0 10px}
+  .ok{background:var(--ok-wash);color:var(--ok);border-radius:9px;padding:9px 12px;
+    font-size:12.5px;font-weight:600;display:none;margin-top:10px}
+  ol{padding-left:20px;color:var(--ink-2);font-size:13px}
+  ol li{margin-bottom:5px}
+  .erro{color:#c0392b;font-size:12.5px;font-weight:600;margin-top:8px;display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="mark"><svg viewBox="0 0 24 24" width="22" height="22" fill="none"><circle cx="12" cy="12" r="9" stroke="#fff" stroke-width="1.6"/><circle cx="12" cy="12" r="3.4" fill="#fff"/></svg></div>
+  <h1>Criar o primeiro usuário do Íris</h1>
+  <div class="sub">Use isto uma vez, no Passo 6 do DEPLOY.md. Os usuários seguintes você cria dentro do próprio sistema.</div>
+
+  <div class="aviso">Esta página funciona offline e não envia nada para lugar nenhum. A senha não sai do seu navegador — o que ela gera é só o hash.</div>
+
+  <div class="card">
+    <div class="field">
+      <label for="nome">Nome da pessoa</label>
+      <input id="nome" placeholder="Geandré" autocomplete="off">
+    </div>
+    <div class="field">
+      <label for="usuario">Usuário (login)</label>
+      <input id="usuario" placeholder="geandre" autocomplete="off" autocapitalize="none" spellcheck="false">
+      <div class="dica">Sem espaços e sem acentos. Vira minúsculo automaticamente.</div>
+    </div>
+    <div class="field">
+      <label for="senha">Senha</label>
+      <input id="senha" type="password" autocomplete="new-password">
+      <div class="dica">Mínimo de 8 caracteres. Use uma que você não usa em outro lugar.</div>
+    </div>
+    <div class="field">
+      <label for="papel">Nível de acesso</label>
+      <select id="papel">
+        <option value="admin">Admin — vê tudo, inclusive financeiro e configurações</option>
+        <option value="vendedor">Vendedor — atende e vende, sem financeiro</option>
+      </select>
+    </div>
+    <button class="btn" id="btn" onclick="gerar()">Gerar comando</button>
+    <div class="erro" id="erro"></div>
+  </div>
+
+  <div class="saida" id="saida">
+    <div class="card">
+      <h2 style="font-size:15px;margin:0 0 4px">Comando para o Console do D1</h2>
+      <p class="dica" style="margin:0 0 12px">Painel → Storage &amp; Databases → D1 → <b>iris_db</b> → aba Console. Cole e execute.</p>
+      <pre id="sqlNovo"></pre>
+      <button class="btn sec" onclick="copiar('sqlNovo',this)">Copiar</button>
+      <div class="ok" id="okNovo">Copiado.</div>
+
+      <h2 style="font-size:15px;margin:26px 0 4px">Se o usuário já existe (trocar a senha)</h2>
+      <p class="dica" style="margin:0 0 12px">Use este em vez do de cima quando for recuperar acesso de alguém que já está cadastrado.</p>
+      <pre id="sqlTroca"></pre>
+      <button class="btn sec" onclick="copiar('sqlTroca',this)">Copiar</button>
+      <div class="ok" id="okTroca">Copiado.</div>
+
+      <h2 style="font-size:15px;margin:26px 0 8px">Depois de executar</h2>
+      <ol>
+        <li>Abra a URL do seu projeto Pages</li>
+        <li>Entre com o usuário e a senha que você acabou de definir</li>
+        <li>Feche esta página — ela não precisa ser guardada nem publicada</li>
+      </ol>
+    </div>
+  </div>
+</div>
+
+<script>
+/* Tem de bater exatamente com functions/api/iris.js */
+const ITERACOES = 100000;
+
+function b64(buf){ return btoa(String.fromCharCode(...new Uint8Array(buf))); }
+function escapar(s){ return String(s).replace(/'/g, "''"); }   // aspas em SQL
+
+async function hashSenha(senha){
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const base = await crypto.subtle.importKey(
+    "raw", new TextEncoder().encode(senha), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits(
+    { name:"PBKDF2", salt, iterations:ITERACOES, hash:"SHA-256" }, base, 256);
+  return `pbkdf2$${ITERACOES}$${b64(salt)}$${b64(bits)}`;
+}
+
+function idAleatorio(){
+  return crypto.randomUUID ? crypto.randomUUID().replace(/-/g,"")
+    : [...crypto.getRandomValues(new Uint8Array(16))].map(b=>b.toString(16).padStart(2,"0")).join("");
+}
+
+function erro(msg){
+  const el = document.getElementById("erro");
+  el.textContent = msg; el.style.display = msg ? "block" : "none";
+}
+
+async function gerar(){
+  erro("");
+  const nome = document.getElementById("nome").value.trim();
+  const usuario = document.getElementById("usuario").value.trim().toLowerCase();
+  const senha = document.getElementById("senha").value;
+  const papel = document.getElementById("papel").value;
+
+  if(!nome) return erro("Informe o nome.");
+  if(!usuario) return erro("Informe o usuário.");
+  if(/[^a-z0-9._-]/.test(usuario)) return erro("O usuário só aceita letras sem acento, números, ponto, hífen e sublinhado.");
+  if(senha.length < 8) return erro("A senha precisa de ao menos 8 caracteres.");
+
+  const btn = document.getElementById("btn");
+  btn.disabled = true; btn.textContent = "Gerando…";
+  // 100 mil voltas levam um instante perceptível — é esse o ponto delas.
+  await new Promise(r => setTimeout(r, 20));
+
+  const hash = await hashSenha(senha);
+  const id = idAleatorio();
+
+  document.getElementById("sqlNovo").textContent =
+    `INSERT INTO usuarios (id, nome, usuario, senha_hash, papel, ativo)\n` +
+    `VALUES ('${id}', '${escapar(nome)}', '${escapar(usuario)}', '${hash}', '${papel}', 1);`;
+
+  document.getElementById("sqlTroca").textContent =
+    `UPDATE usuarios\n   SET nome = '${escapar(nome)}',\n       senha_hash = '${hash}',\n` +
+    `       papel = '${papel}',\n       ativo = 1\n WHERE usuario = '${escapar(usuario)}';`;
+
+  document.getElementById("saida").style.display = "block";
+  btn.disabled = false; btn.textContent = "Gerar de novo";
+  document.getElementById("saida").scrollIntoView({behavior:"smooth", block:"start"});
+}
+
+function copiar(id, botao){
+  const txt = document.getElementById(id).textContent;
+  const marcar = () => {
+    const ok = document.getElementById(id === "sqlNovo" ? "okNovo" : "okTroca");
+    ok.style.display = "block"; setTimeout(()=>{ ok.style.display = "none"; }, 1800);
+  };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(marcar).catch(()=>selecionar(id));
+  } else selecionar(id);
+}
+// Sem permissão de área de transferência (acontece ao abrir via file://),
+// selecionar o texto deixa o Ctrl+C a um atalho de distância.
+function selecionar(id){
+  const el = document.getElementById(id);
+  const faixa = document.createRange(); faixa.selectNodeContents(el);
+  const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(faixa);
+}
+
+document.addEventListener("keydown", e => {
+  if(e.key === "Enter" && !e.shiftKey && document.activeElement.tagName === "INPUT"){
+    e.preventDefault(); gerar();
+  }
+});
+</script>
+</body>
+</html>

@@ -377,6 +377,18 @@
     color:var(--side-hi);padding:11px 18px;border-radius:10px;font-size:13.5px;font-weight:600;box-shadow:0 12px 30px rgba(0,0,0,.25);z-index:200;opacity:0;transition:opacity .2s,transform .2s}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(-4px)}
 
+  /* ---------- Login ---------- */
+  .login-bg{position:fixed;inset:0;z-index:300;display:grid;place-items:center;
+    padding:20px;background:var(--paper)}
+  .login-card{width:100%;max-width:380px;background:var(--surface);border:1px solid var(--line);
+    border-radius:16px;box-shadow:var(--e2);padding:28px 26px}
+  .login-card .mark{width:40px;height:40px;border-radius:11px;
+    background:linear-gradient(150deg,var(--accent),#12908c);display:grid;place-items:center;margin-bottom:16px}
+  .login-card h2{margin:0 0 3px;font-size:20px;letter-spacing:-.01em}
+  .login-card .sub{color:var(--ink-3);font-size:12.5px;margin-bottom:20px}
+  .login-erro{background:var(--alert-wash);color:var(--alert);font-size:12.5px;font-weight:600;
+    padding:9px 12px;border-radius:9px;margin-bottom:14px}
+
   @media (max-width:960px){
     .app{grid-template-columns:1fr}
     .side{position:fixed;left:-260px;top:0;bottom:0;width:232px;z-index:60;transition:left .2s}
@@ -413,11 +425,16 @@
       </div>
       <div class="spacer"></div>
       <div id="pageActions" style="display:flex;gap:10px;flex-wrap:wrap"></div>
+      <span class="chip neutral" id="avisoRede" style="display:none"></span>
       <button class="theme-btn" id="themeBtn" onclick="toggleTema()" title="Alternar tema" aria-label="Alternar tema"></button>
+      <button class="theme-btn" id="sairBtn" onclick="sair()" title="Sair" aria-label="Sair">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 17l5-5-5-5M20 12H9M11 3H5v18h6"/></svg>
+      </button>
     </div>
     <div class="content" id="app"></div>
   </main>
 </div>
+<div id="loginRoot" class="login-bg" style="display:none"></div>
 <div id="modalRoot"></div>
 <div class="toast" id="toast"></div>
 
@@ -425,6 +442,9 @@
 /* ============================================================
    ÍRIS CRM — núcleo de dados
    ============================================================ */
+/* Chave do armazenamento ANTIGO, de quando o Íris guardava tudo no
+   navegador. Não é mais escrita — fica só para achar e trazer os dados
+   que já estão na máquina de alguém. Ver migrarDoNavegador(). */
 const KEY = "iris_crm_v1";
 const STAGES = [
   {id:"novo",     nome:"Novo contato",      cor:"#6b7885"},
@@ -446,18 +466,151 @@ const OS_STATUS = [
 ];
 const FORMAS = ["À vista","Cartão","Crediário"];
 
-let DB = load();
+/* ============================================================
+   PERSISTÊNCIA — API + D1, com cache de leitura e fila de escrita
 
-function load(){
-  try{ const raw = localStorage.getItem(KEY); if(raw) return JSON.parse(raw); }catch(e){}
-  const db = seed();
-  try{ localStorage.setItem(KEY, JSON.stringify(db)); }catch(e){}
-  return db;
+   O dado mora no D1 e é o mesmo para todo mundo na loja. Mas loja
+   sem internet não pode virar loja sem CRM, então:
+
+     leitura  — o que chega da API é copiado para um cache local.
+                Caiu a conexão, o app abre com a última cópia e diz
+                que está desatualizado. Não finge estar online.
+     escrita  — TODA gravação entra numa fila antes de sair. Com rede,
+                a fila escoa na hora e o usuário não percebe. Sem rede,
+                ela espera e escoa sozinha quando a conexão volta.
+
+   A fila guarda mudanças por registro, nunca o banco inteiro: dois
+   vendedores salvando ao mesmo tempo tocam linhas diferentes e nenhum
+   apaga o trabalho do outro. Era esse o ponto de trocar o localStorage.
+   ============================================================ */
+const API     = "/api/iris";
+const CACHE_K = "iris_cache_v2";
+const FILA_K  = "iris_fila_v2";
+
+function bancoVazio(){
+  return { clientes:[], receitas:[], produtos:[], negocios:[], tarefas:[], os:[], parcelas:[],
+    config:{ nome:"Íris", metaMes:7500, cicloRecompraMeses:18, validadePadrao:12,
+             ddi:"55", prazoLabDias:7, laboratorios:[] } };
 }
-function save(){ try{ localStorage.setItem(KEY, JSON.stringify(DB)); }catch(e){ toast("Não foi possível salvar (armazenamento cheio ou bloqueado)."); } }
-function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+let DB = bancoVazio();
+let SESSAO = { logado:false, nome:"", papel:"vendedor" };
+let semRede = false;
+let escoando = false;
 
-/* ---------- Seed: dados de exemplo p/ o app já nascer útil ---------- */
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+function podeAdmin(){ return SESSAO.papel === "admin"; }
+
+async function api(corpo){
+  const res = await fetch(API, { method:"POST", credentials:"same-origin",
+    headers:{"Content-Type":"application/json"}, body:JSON.stringify(corpo) });
+  let dados = {};
+  try{ dados = await res.json(); }catch(e){}
+  if(res.status === 401 && dados.semSessao){
+    SESSAO.logado = false;
+    telaLogin("Sua sessão expirou. Entre de novo.");
+    throw Object.assign(new Error("sem sessão"), { semSessao:true });
+  }
+  if(!res.ok) throw Object.assign(new Error(dados.erro || ("HTTP "+res.status)),
+    { resposta:dados, status:res.status });
+  return dados;
+}
+
+/* ---------- cache local ---------- */
+function gravarCache(db){ try{ localStorage.setItem(CACHE_K, JSON.stringify(db)); }catch(e){} }
+function lerCache(){
+  try{ const raw = localStorage.getItem(CACHE_K); return raw ? JSON.parse(raw) : null; }catch(e){ return null; }
+}
+/* ---------- fila de escrita ---------- */
+function lerFila(){
+  try{ const raw = localStorage.getItem(FILA_K); const f = raw?JSON.parse(raw):[]; return Array.isArray(f)?f:[]; }
+  catch(e){ return []; }
+}
+function gravarFila(f){ try{ localStorage.setItem(FILA_K, JSON.stringify(f)); }catch(e){} }
+
+/* Substitui o antigo save(). Recebe só o que mudou:
+     salvar({ clientes:[c] })
+     salvar({ negocios:[n], parcelas:novas, os:[ordem] })
+     salvar({ _remover:{ clientes:[id] } })
+   A tela já foi atualizada em memória por quem chamou — aqui é só
+   persistir. Por isso nada aqui bloqueia a interface. */
+function salvar(mudancas){
+  gravarCache(DB);
+  const f = lerFila(); f.push(mudancas); gravarFila(f);
+  escoarFila();
+}
+
+async function escoarFila(){
+  if(escoando || !SESSAO.logado) return;
+  if(!lerFila().length){ if(semRede){ semRede=false; marcarRede(); } return; }
+  if(navigator.onLine === false){ semRede=true; marcarRede(); return; }
+  escoando = true;
+  try{
+    while(true){
+      const f = lerFila();
+      if(!f.length) break;
+      let r;
+      try{
+        r = await api({ acao:"gravar", mudancas:f[0] });
+      }catch(e){
+        if(e.semSessao){ escoando=false; return; }
+        if(e.status === 403){
+          // Rejeição definitiva (permissão). Repetir para sempre travaria
+          // a fila inteira atrás de um lote que nunca vai passar.
+          f.shift(); gravarFila(f);
+          toast("Uma alteração foi recusada: " + (e.message||"sem permissão") + ".");
+          continue;
+        }
+        throw e;                      // rede ou servidor: mantém na fila
+      }
+      if(r && r.erro){ f.shift(); gravarFila(f); toast("Alteração recusada: "+r.erro); continue; }
+      f.shift(); gravarFila(f);
+    }
+    semRede = false;
+  }catch(e){
+    semRede = true;
+  }finally{
+    escoando = false;
+    marcarRede();
+  }
+}
+window.addEventListener("online", ()=>{ semRede=false; escoarFila(); });
+window.addEventListener("offline", ()=>{ semRede=true; marcarRede(); });
+
+/* Aviso honesto no cabeçalho: quantas alterações ainda não chegaram ao
+   servidor. Esconder isso faria o vendedor achar que já salvou. */
+function marcarRede(){
+  const el = document.getElementById("avisoRede");
+  if(!el) return;
+  const pend = lerFila().length;
+  if(!semRede && !pend){ el.style.display="none"; el.textContent=""; return; }
+  el.style.display = "inline-flex";
+  el.className = "chip " + (semRede ? "warn" : "neutral");
+  el.textContent = semRede
+    ? (pend ? `Sem conexão · ${pend} ${pend===1?"alteração":"alterações"} na fila` : "Sem conexão")
+    : `Salvando ${pend}…`;
+}
+
+async function carregarDados(){
+  try{
+    const r = await api({ acao:"carregar" });
+    DB = r.dados;
+    SESSAO.papel = r.papel; SESSAO.nome = r.nome;
+    gravarCache(DB);
+    semRede = false;
+    escoarFila();
+    return true;
+  }catch(e){
+    if(e.semSessao) return false;
+    const c = lerCache();
+    if(c){ DB = c; semRede = true; toast("Sem conexão — mostrando a última cópia salva neste aparelho."); return true; }
+    throw e;
+  }
+}
+
+/* ---------- Dados de exemplo ----------
+   Não roda mais sozinho: com banco compartilhado, um app que se
+   autopovoa encheria a base da loja de clientes fictícios. Agora só
+   é chamado pelo botão em Config, e só quando a base está vazia. ---- */
 function seed(){
   const today = new Date();
   const iso = (d)=> d.toISOString().slice(0,10);
@@ -772,12 +925,20 @@ const VIEWS = [
 ];
 let state = { view:"painel", clienteSel:null, buscaCli:"", buscaProd:"", filtroRec:"todos" };
 
+/* Financeiro e Config são do admin. Esconder no menu não bastaria — a
+   API também não entrega parcelas ao vendedor — mas evita que ele bata
+   numa porta fechada no meio do atendimento. */
+const VIEWS_ADMIN = new Set(["financeiro","config"]);
+function viewsVisiveis(){
+  return podeAdmin() ? VIEWS : VIEWS.filter(v=>!VIEWS_ADMIN.has(v.id));
+}
+
 function renderNav(){
   const rec = recompraList().length;
   const pend = tarefasVencidas().length;
   const prontos = DB.os.filter(o=>o.status==="pronto").length;
   const atras = parcelasAtrasadas().length;
-  $("#nav").innerHTML = VIEWS.map(v=>{
+  $("#nav").innerHTML = viewsVisiveis().map(v=>{
     let badge="";
     if(v.id==="recompra" && rec) badge=`<span class="badge num">${rec}</span>`;
     if(v.id==="agenda" && pend) badge=`<span class="badge num">${pend}</span>`;
@@ -859,8 +1020,12 @@ function render(){
   else renderAgora();
 }
 function renderAgora(){
+  // Um vendedor que ficou numa tela de admin (trocou de usuário, ou a
+  // sessão mudou de papel) volta para o Painel em vez de ver tela vazia.
+  if(!podeAdmin() && VIEWS_ADMIN.has(state.view)) state.view="painel";
   renderNav();
   aplicarTema(temaAtual());
+  marcarRede();
   const app=$("#app");
   if(state.view==="painel") return renderPainel(app);
   if(state.view==="funil") return renderFunil(app);
@@ -1063,20 +1228,28 @@ function dropDeal(e,stg){
   if(stg==="ganho" && n.etapa!=="ganho"){ modalFecharVenda(n.id); return; }  // exige pagamento e OS antes de fechar
   n.etapa=stg; n.atualizadoEm=new Date().toISOString().slice(0,10);
   _movido=n.id; _colRecebeu=stg;                 // motion: quem se moveu e para onde
-  save(); render(); toast("Negócio movido para “"+stage(stg).nome+"”.");
+  salvar({negocios:[n]}); render(); toast("Negócio movido para “"+stage(stg).nome+"”.");
 }
+/* Devolve o que tocou, para quem chamou mandar tudo numa gravação só.
+   Fechar venda mexe em negócio, estoque e tarefa ao mesmo tempo — se cada
+   um fosse para a fila separado, uma queda no meio deixaria o estoque
+   baixado sem a venda registrada. */
 function ganharNegocio(n){
   n.fechadoEm=new Date().toISOString().slice(0,10);
   n.garantiaMeses=n.garantiaMeses||12;
   // baixa de estoque
-  n.itens.forEach(i=>{ const p=produto(i.produtoId); if(p&&typeof p.estoque==="number") p.estoque=Math.max(0,p.estoque-i.qtd); });
+  const produtosTocados=[];
+  n.itens.forEach(i=>{ const p=produto(i.produtoId);
+    if(p&&typeof p.estoque==="number"){ p.estoque=Math.max(0,p.estoque-i.qtd); produtosTocados.push(p); } });
   // pós-venda automático de adaptação (15 dias)
   const rx = n.receitaId? DB.receitas.find(r=>r.id===n.receitaId):null;
   const multi = rx && /multifocal|bifocal|ocupacional/i.test(rx.tipo);
   const dt=new Date(); dt.setDate(dt.getDate()+ (multi?15:7));
-  DB.tarefas.push({id:uid(),clienteId:n.clienteId,negocioId:n.id,
+  const tarefa={id:uid(),clienteId:n.clienteId,negocioId:n.id,
     titulo: multi?"Pós-venda 15d — adaptação multifocal":"Pós-venda — conferir adaptação",
-    tipo:"posvenda",venceEm:dt.toISOString().slice(0,10),feito:false});
+    tipo:"posvenda",venceEm:dt.toISOString().slice(0,10),feito:false};
+  DB.tarefas.push(tarefa);
+  return { produtos:produtosTocados, tarefas:[tarefa] };
 }
 
 /* ---------------- CLIENTES ---------------- */
@@ -1342,8 +1515,8 @@ function renderFila(){
     ${linhas}</div>`;
 }
 function tarefaTipoLabel(t){ return {ligacao:"Ligação",whatsapp:"WhatsApp",posvenda:"Pós-venda",recompra:"Recompra",geral:"Geral"}[t]||"Geral"; }
-function toggleTarefa(id){ const t=DB.tarefas.find(x=>x.id===id); if(!t)return; t.feito=!t.feito; save(); render(); }
-function concluirTarefa(id){ const t=DB.tarefas.find(x=>x.id===id); if(!t)return; t.feito=true; save();
+function toggleTarefa(id){ const t=DB.tarefas.find(x=>x.id===id); if(!t)return; t.feito=!t.feito; salvar({tarefas:[t]}); render(); }
+function concluirTarefa(id){ const t=DB.tarefas.find(x=>x.id===id); if(!t)return; t.feito=true; salvar({tarefas:[t]});
   sairLinha(event, ()=>{ render(); toast("Tarefa concluída."); }); }
 
 /* ---------------- CONFIG ---------------- */
@@ -1369,15 +1542,23 @@ function renderConfig(app){
       <button class="btn primary" onclick="salvarConfig()">Salvar</button>
     </div></div>
     <div class="card"><div class="card-h"><h3>Backup & dados</h3></div><div class="modal-b">
-      <p class="muted" style="font-size:12.5px;margin-top:0">Seus dados ficam apenas neste navegador. Exporte com frequência.</p>
+      <p class="muted" style="font-size:12.5px;margin-top:0">Os dados ficam no banco da loja e são os mesmos em todos os aparelhos. O Cloudflare faz cópia do banco, mas um backup seu, fora da conta, não custa nada.</p>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         <button class="btn" onclick="exportJSON()">Exportar (.json)</button>
-        <label class="btn" style="cursor:pointer">Importar<input type="file" accept="application/json" style="display:none" onchange="importJSON(event)"></label>
+        ${podeAdmin()?`<label class="btn" style="cursor:pointer">Importar<input type="file" accept="application/json" style="display:none" onchange="importJSON(event)"></label>`:''}
         <button class="btn" onclick="exportCSV()">Clientes (.csv)</button>
       </div>
-      <div style="margin-top:14px;border-top:1px solid var(--line-soft);padding-top:12px">
-        <button class="btn" style="color:var(--alert);border-color:var(--alert-wash)" onclick="resetDados()">Restaurar dados de exemplo</button>
-      </div>
+      ${podeAdmin()?`<p class="muted" style="font-size:12px;margin:12px 0 0">Importar envia o arquivo para o banco da loja. Registro com o mesmo código é sobrescrito; nada é apagado.</p>`:''}
+      ${podeAdmin()&&dadosAntigosNoNavegador()?`
+        <div style="margin-top:14px;border-top:1px solid var(--line-soft);padding-top:12px">
+          <button class="btn" onclick="migrarDoNavegador()">Trazer dados da versão antiga</button>
+          <p class="muted" style="font-size:12px;margin:8px 0 0">Este navegador ainda guarda ${dadosAntigosNoNavegador().clientes.length} clientes da versão que salvava localmente.</p>
+        </div>`:''}
+      ${podeAdmin()&&bancoVazioNaLoja()?`
+        <div style="margin-top:14px;border-top:1px solid var(--line-soft);padding-top:12px">
+          <button class="btn" onclick="popularExemplo()">Popular com dados de exemplo</button>
+          <p class="muted" style="font-size:12px;margin:8px 0 0">Só aparece enquanto a base está vazia — serve para conhecer o sistema antes de cadastrar de verdade.</p>
+        </div>`:''}
     </div></div>
     <div class="card"><div class="card-h"><h3>Aparência</h3></div><div class="modal-b">
       ${(()=>{
@@ -1412,7 +1593,7 @@ function salvarConfig(){
   DB.config.ddi=onlyDigits($("#cfDdi").value)||"55";
   if($("#cfCiclo")) DB.config.cicloRecompraMeses=+$("#cfCiclo").value||18;
   if($("#cfVal")) DB.config.validadePadrao=+$("#cfVal").value||12;
-  save(); render(); toast("Configurações salvas.");
+  salvar({config:DB.config}); render(); toast("Configurações salvas.");
 }
 function exportJSON(){ downloadFile(JSON.stringify(DB,null,2),"backup-crm-otica.json","application/json"); }
 function exportCSV(){
@@ -1423,9 +1604,55 @@ function exportCSV(){
 }
 function downloadFile(content,name,type){ const b=new Blob([content],{type}); const u=URL.createObjectURL(b);
   const a=document.createElement("a"); a.href=u; a.download=name; a.click(); URL.revokeObjectURL(u); }
-function importJSON(e){ const f=e.target.files[0]; if(!f)return; const r=new FileReader();
-  r.onload=()=>{ try{ const data=JSON.parse(r.result); if(!data.clientes) throw 0; DB=data; save(); render(); toast("Backup importado."); }catch(err){ toast("Arquivo inválido."); } }; r.readAsText(f); }
-function resetDados(){ if(confirm("Isso apaga tudo e recarrega os dados de exemplo. Continuar?")){ localStorage.removeItem(KEY); DB=seed(); save(); state.clienteSel=null; render(); toast("Dados de exemplo restaurados."); } }
+/* Importar agora escreve no banco compartilhado, não no navegador de quem
+   clicou. Por isso é só do admin e avisa o tamanho do que vai subir: é a
+   mesma rotina que leva os dados antigos do localStorage para o D1. */
+function importJSON(e){
+  const f=e.target.files[0]; if(!f) return;
+  if(!podeAdmin()){ toast("Só o administrador pode importar dados."); e.target.value=""; return; }
+  const r=new FileReader();
+  r.onload=()=>{
+    let data;
+    try{ data=JSON.parse(r.result); }catch(err){ toast("Arquivo inválido."); return; }
+    if(!data || !Array.isArray(data.clientes)){ toast("Arquivo inválido: não parece um backup do Íris."); return; }
+    const conta=(k)=>Array.isArray(data[k])?data[k].length:0;
+    const total=["clientes","receitas","produtos","negocios","tarefas","os","parcelas"].reduce((s,k)=>s+conta(k),0);
+    if(!confirm(`Enviar ${total} registros para o banco da loja?\n\n`+
+      `${conta("clientes")} clientes · ${conta("receitas")} receitas · ${conta("produtos")} produtos\n`+
+      `${conta("negocios")} negócios · ${conta("tarefas")} tarefas · ${conta("os")} OS · ${conta("parcelas")} parcelas\n\n`+
+      `Registros com o mesmo código serão sobrescritos. Nada é apagado.`)) return;
+    importarParaOBanco(data, total);
+  };
+  r.readAsText(f);
+}
+async function popularExemplo(){
+  if(!podeAdmin()){ toast("Só o administrador pode fazer isso."); return; }
+  if(!bancoVazioNaLoja()){ toast("A base já tem registros — o exemplo só entra em base vazia."); return; }
+  if(!confirm("Preencher o banco da loja com clientes e vendas de exemplo?\n\nSão dados fictícios, para você conhecer o sistema. Dá para excluí-los depois.")) return;
+  const demo=seed();
+  const chaves=["clientes","receitas","produtos","negocios","tarefas","os","parcelas"];
+  await importarParaOBanco(demo, chaves.reduce((s,k)=>s+demo[k].length,0));
+}
+
+async function importarParaOBanco(data, total){
+  const chaves=["clientes","receitas","produtos","negocios","tarefas","os","parcelas"];
+  // Em lotes: um arquivo grande numa requisição só estoura o limite de
+  // tamanho do corpo e o de instruções por transação do D1.
+  const LOTE=150;
+  try{
+    for(const k of chaves){
+      const lista=Array.isArray(data[k])?data[k]:[];
+      for(let i=0;i<lista.length;i+=LOTE){
+        await api({acao:"gravar", mudancas:{ [k]: lista.slice(i,i+LOTE) }});
+      }
+    }
+    if(data.config) await api({acao:"gravar", mudancas:{config:data.config}});
+    await carregarDados(); render();
+    toast(`Backup importado — ${total} registros no banco da loja.`);
+  }catch(err){
+    toast("Falha ao importar: "+(err.message||"erro desconhecido"));
+  }
+}
 
 /* ============================================================
    Modais / formulários
@@ -1452,14 +1679,21 @@ function salvarCliente(id){
   const nome=$("#clNome").value.trim(); if(!nome){ toast("Informe o nome."); return; }
   const dados={nome,telefone:$("#clTel").value.trim(),email:$("#clMail").value.trim(),nascimento:$("#clNasc").value,
     tags:$("#clTags").value.split(",").map(s=>s.trim()).filter(Boolean),obs:$("#clObs").value.trim()};
-  if(id){ Object.assign(cliente(id),dados); } else { DB.clientes.push({id:uid(),criadoEm:new Date().toISOString().slice(0,10),...dados}); }
-  save(); closeModal(); render(); toast("Cliente salvo.");
+  let reg;
+  if(id){ reg=cliente(id); Object.assign(reg,dados); }
+  else { reg={id:uid(),criadoEm:new Date().toISOString().slice(0,10),...dados}; DB.clientes.push(reg); }
+  salvar({clientes:[reg]}); closeModal(); render(); toast("Cliente salvo.");
 }
-function excluirCliente(id){ if(!confirm("Excluir este cliente e seus dados?"))return;
+function excluirCliente(id){
+  if(!podeAdmin()){ toast("Só o administrador pode excluir registros."); return; }
+  if(!confirm("Excluir este cliente e seus dados?"))return;
   DB.clientes=DB.clientes.filter(c=>c.id!==id); DB.receitas=DB.receitas.filter(r=>r.clienteId!==id);
   DB.negocios=DB.negocios.filter(n=>n.clienteId!==id); DB.tarefas=DB.tarefas.filter(t=>t.clienteId!==id);
   DB.os=DB.os.filter(o=>o.clienteId!==id); DB.parcelas=DB.parcelas.filter(p=>p.clienteId!==id);
-  save(); closeModal(); state.clienteSel=null; render(); toast("Cliente excluído.");
+  // Só o cliente vai na fila: o banco derruba receitas, negócios, OS e
+  // parcelas em cascata. Mandar os filhos também seria pedir ao servidor
+  // para apagar linha que a FK já levou.
+  salvar({_remover:{clientes:[id]}}); closeModal(); state.clienteSel=null; render(); toast("Cliente excluído.");
 }
 
 function modalReceita(id,clienteId){
@@ -1491,10 +1725,15 @@ function salvarReceita(id,cid){
     od:{esf:g("rx_OD_esf"),cil:g("rx_OD_cil"),eixo:g("rx_OD_eixo")},
     oe:{esf:g("rx_OE_esf"),cil:g("rx_OE_cil"),eixo:g("rx_OE_eixo")},
     adicao:g("rxAd"),dp:g("rxDp"),validadeMeses:+$("#rxVal").value||12,medico:g("rxMed"),obs:""};
-  if(id){ Object.assign(DB.receitas.find(x=>x.id===id),dados); } else { DB.receitas.push({id:uid(),...dados}); }
-  save(); closeModal(); render(); toast("Receita salva.");
+  let reg;
+  if(id){ reg=DB.receitas.find(x=>x.id===id); Object.assign(reg,dados); }
+  else { reg={id:uid(),...dados}; DB.receitas.push(reg); }
+  salvar({receitas:[reg]}); closeModal(); render(); toast("Receita salva.");
 }
-function excluirReceita(id){ DB.receitas=DB.receitas.filter(r=>r.id!==id); save(); closeModal(); render(); toast("Receita excluída."); }
+function excluirReceita(id){
+  if(!podeAdmin()){ toast("Só o administrador pode excluir registros."); return; }
+  DB.receitas=DB.receitas.filter(r=>r.id!==id);
+  salvar({_remover:{receitas:[id]}}); closeModal(); render(); toast("Receita excluída."); }
 
 function modalProduto(id){
   const p=id?produto(id):{nome:"",categoria:"Armação",marca:"",preco:0,custo:0,estoque:0};
@@ -1515,10 +1754,15 @@ function salvarProduto(id){
   const nome=$("#pdNome").value.trim(); if(!nome){ toast("Informe o nome."); return; }
   const dados={nome,categoria:$("#pdCat").value,marca:$("#pdMarca").value.trim(),
     preco:+$("#pdPreco").value||0,custo:+$("#pdCusto").value||0,estoque:+$("#pdEst").value||0};
-  if(id){ Object.assign(produto(id),dados); } else { DB.produtos.push({id:uid(),...dados}); }
-  save(); closeModal(); render(); toast("Produto salvo.");
+  let reg;
+  if(id){ reg=produto(id); Object.assign(reg,dados); }
+  else { reg={id:uid(),...dados}; DB.produtos.push(reg); }
+  salvar({produtos:[reg]}); closeModal(); render(); toast("Produto salvo.");
 }
-function excluirProduto(id){ DB.produtos=DB.produtos.filter(p=>p.id!==id); save(); closeModal(); render(); toast("Produto excluído."); }
+function excluirProduto(id){
+  if(!podeAdmin()){ toast("Só o administrador pode excluir registros."); return; }
+  DB.produtos=DB.produtos.filter(p=>p.id!==id);
+  salvar({_remover:{produtos:[id]}}); closeModal(); render(); toast("Produto excluído."); }
 
 /* ---- Negócio (com itens) ---- */
 let tmpItens=[];
@@ -1579,18 +1823,21 @@ function salvarNegocio(id){
   const dados={clienteId:cid,titulo,etapa,origem:$("#ngOrig").value,prioridade:$("#ngPrio").value,
     receitaId:$("#ngRx")?.value||null,itens:tmpItens.slice(),valor:tmpItens.reduce((s,i)=>s+i.preco*i.qtd,0),
     atualizadoEm:new Date().toISOString().slice(0,10)};
+  let reg;
   if(id){ const n=DB.negocios.find(x=>x.id===id); const eraGanho=n.etapa==="ganho";
     const virandoGanho = etapa==="ganho" && !eraGanho;
-    Object.assign(n,dados);
-    if(virandoGanho){ n.etapa=eraGanho?"ganho":dados.etapa; save(); closeModal(); return modalFecharVenda(id); }
-  } else { const novo={id:uid(),criadoEm:new Date().toISOString().slice(0,10),...dados}; DB.negocios.push(novo);
-    if(etapa==="ganho"){ save(); closeModal(); return modalFecharVenda(novo.id); } }
-  save(); closeModal(); render(); toast("Negócio salvo.");
+    Object.assign(n,dados); reg=n;
+    if(virandoGanho){ n.etapa=eraGanho?"ganho":dados.etapa; salvar({negocios:[n]}); closeModal(); return modalFecharVenda(id); }
+  } else { const novo={id:uid(),criadoEm:new Date().toISOString().slice(0,10),...dados}; DB.negocios.push(novo); reg=novo;
+    if(etapa==="ganho"){ salvar({negocios:[novo]}); closeModal(); return modalFecharVenda(novo.id); } }
+  salvar({negocios:[reg]}); closeModal(); render(); toast("Negócio salvo.");
 }
-function excluirNegocio(id){ DB.negocios=DB.negocios.filter(n=>n.id!==id);
+function excluirNegocio(id){
+  if(!podeAdmin()){ toast("Só o administrador pode excluir registros."); return; }
+  DB.negocios=DB.negocios.filter(n=>n.id!==id);
   DB.os=DB.os.filter(o=>o.negocioId!==id); DB.parcelas=DB.parcelas.filter(p=>p.negocioId!==id);
-  save(); closeModal(); render(); toast("Negócio excluído."); }
-function perderNegocio(id){ const n=DB.negocios.find(x=>x.id===id); n.etapa="perdido"; n.fechadoEm=new Date().toISOString().slice(0,10); save(); closeModal(); render(); toast("Negócio marcado como perdido."); }
+  salvar({_remover:{negocios:[id]}}); closeModal(); render(); toast("Negócio excluído."); }
+function perderNegocio(id){ const n=DB.negocios.find(x=>x.id===id); n.etapa="perdido"; n.fechadoEm=new Date().toISOString().slice(0,10); salvar({negocios:[n]}); closeModal(); render(); toast("Negócio marcado como perdido."); }
 
 /* ---- Tarefa ---- */
 function modalTarefa(){
@@ -1604,8 +1851,9 @@ function modalTarefa(){
     <div class="modal-f"><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" onclick="salvarTarefa()">Salvar</button></div></div>`);
 }
 function salvarTarefa(){ const titulo=$("#tkTit").value.trim(); if(!titulo){ toast("Informe o título."); return; }
-  DB.tarefas.push({id:uid(),titulo,clienteId:$("#tkCli").value||null,negocioId:null,tipo:$("#tkTipo").value,venceEm:$("#tkData").value,feito:false});
-  save(); closeModal(); render(); toast("Tarefa criada."); }
+  const nova={id:uid(),titulo,clienteId:$("#tkCli").value||null,negocioId:null,tipo:$("#tkTipo").value,venceEm:$("#tkData").value,feito:false};
+  DB.tarefas.push(nova);
+  salvar({tarefas:[nova]}); closeModal(); render(); toast("Tarefa criada."); }
 
 /* ============================================================
    Fechamento de venda · Oficina (OS) · Financeiro (crediário)
@@ -1672,21 +1920,30 @@ function confirmarVenda(nid){
   const forma=$("#fvForma").value, qtd=Math.max(1,+$("#fvQtd").value||1), venc=$("#fvVenc").value;
   const hoje=new Date().toISOString().slice(0,10);
   n.etapa="ganho"; n.atualizadoEm=hoje;
-  ganharNegocio(n);                                   // estoque + tarefa de pós-venda
+  const tocado = ganharNegocio(n);                    // estoque + tarefa de pós-venda
   // parcelas
+  const novasParcelas=[];
   const val=Math.round(n.valor/qtd*100)/100;
   for(let k=0;k<qtd;k++){
     const vc=d(venc)||new Date(); const dt=new Date(vc); dt.setMonth(dt.getMonth()+k);
-    DB.parcelas.push({id:uid(),negocioId:n.id,clienteId:n.clienteId,n:k+1,total:qtd,valor:val,
-      venceEm:dt.toISOString().slice(0,10), pagoEm: (forma==="À vista"||(forma==="Cartão"&&k===0&&qtd===1))?hoje:null, forma});
+    const p={id:uid(),negocioId:n.id,clienteId:n.clienteId,n:k+1,total:qtd,valor:val,
+      venceEm:dt.toISOString().slice(0,10), pagoEm: (forma==="À vista"||(forma==="Cartão"&&k===0&&qtd===1))?hoje:null, forma};
+    DB.parcelas.push(p); novasParcelas.push(p);
   }
   // ordem de serviço
+  const novasOS=[];
   if($("#fvTemOS").checked){
     const num=(DB.os.reduce((m,o)=>Math.max(m,o.numero||1000),1000))+1;
-    DB.os.push({id:uid(),negocioId:n.id,clienteId:n.clienteId,numero:num,status:"aguardando",
-      laboratorio:$("#fvLab").value,enviadoEm:null,previsaoEm:$("#fvPrevData").value,chegouEm:null,entregueEm:null,obs:""});
+    const o={id:uid(),negocioId:n.id,clienteId:n.clienteId,numero:num,status:"aguardando",
+      laboratorio:$("#fvLab").value,enviadoEm:null,previsaoEm:$("#fvPrevData").value,chegouEm:null,entregueEm:null,obs:""};
+    DB.os.push(o); novasOS.push(o);
   }
-  save(); closeModal(); render();
+  // Uma gravação só, com tudo que a venda produziu: negócio, pós-venda,
+  // OS, parcelas e baixa de estoque. O servidor aceita as cinco partes do
+  // vendedor — parcela nova e movimento de estoque são o trabalho dele.
+  salvar({ negocios:[n], tarefas:tocado.tarefas, os:novasOS,
+           produtos:tocado.produtos, parcelas:novasParcelas });
+  closeModal(); render();
   toast("Venda fechada! 🎉 " + ($("#fvTemOS")?.checked?"OS criada · ":"") + "pós-venda agendado.");
 }
 
@@ -1733,13 +1990,15 @@ function avancarOS(id){
   o.status=prox.id;
   if(prox.id==="lab") o.enviadoEm=hoje;
   if(prox.id==="chegou") o.chegouEm=hoje;
+  const novasTarefas=[];
   if(prox.id==="pronto"){                     // avisar o cliente vira tarefa, não boa intenção
-    DB.tarefas.push({id:uid(),clienteId:o.clienteId,negocioId:o.negocioId,
-      titulo:"Avisar que o óculos chegou (OS "+o.numero+")",tipo:"whatsapp",venceEm:hoje,feito:false});
+    const t={id:uid(),clienteId:o.clienteId,negocioId:o.negocioId,
+      titulo:"Avisar que o óculos chegou (OS "+o.numero+")",tipo:"whatsapp",venceEm:hoje,feito:false};
+    DB.tarefas.push(t); novasTarefas.push(t);
   }
   if(prox.id==="entregue") o.entregueEm=hoje;
   _movido=o.id; _colRecebeu=prox.id;
-  save(); render(); toast("OS "+o.numero+" → "+prox.nome+".");
+  salvar({os:[o], tarefas:novasTarefas}); render(); toast("OS "+o.numero+" → "+prox.nome+".");
 }
 
 /* --- Financeiro: crediário e cobrança --- */
@@ -1777,7 +2036,7 @@ function renderFinanceiro(app){
       :emptyBox('Nada a vencer.')}</div>`;
 }
 function receberParcela(id){ const p=DB.parcelas.find(x=>x.id===id); if(!p)return;
-  p.pagoEm=new Date().toISOString().slice(0,10); save();
+  p.pagoEm=new Date().toISOString().slice(0,10); salvar({parcelas:[p]});
   sairLinha(event, ()=>{ render(); toast("Parcela recebida — "+brl(p.valor)+"."); }); }
 
 /* A linha desaparece antes da lista se reorganizar: o usuário vê o que causou a mudança. */
@@ -1791,10 +2050,143 @@ function sairLinha(ev, depois){
 /* ---------- helpers UI ---------- */
 function emptyBox(msg){ return `<div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M9 12h6"/></svg><div>${msg}</div></div>`; }
 
+/* ============================================================
+   MIGRAÇÃO — do localStorage antigo para o banco da loja
+
+   Quem já usava o Íris tem os dados guardados neste navegador, sob a
+   chave iris_crm_v1. Pedir para a pessoa exportar um .json e importar
+   de volta funciona, mas é um passo a mais para esquecer. O app acha
+   sozinho e oferece — uma vez, só para o admin, e só se o banco da
+   loja estiver vazio. Base com dados é base em uso: nunca despejar
+   por cima.
+   ============================================================ */
+function dadosAntigosNoNavegador(){
+  try{
+    const raw = localStorage.getItem(KEY);
+    if(!raw) return null;
+    const d = JSON.parse(raw);
+    return (d && Array.isArray(d.clientes) && d.clientes.length) ? d : null;
+  }catch(e){ return null; }
+}
+function bancoVazioNaLoja(){
+  return !DB.clientes.length && !DB.produtos.length && !DB.negocios.length;
+}
+async function migrarDoNavegador(){
+  const antigo = dadosAntigosNoNavegador();
+  if(!antigo){ toast("Nenhum dado antigo encontrado neste navegador."); return; }
+  if(!podeAdmin()){ toast("Só o administrador pode migrar os dados."); return; }
+  if(!bancoVazioNaLoja() &&
+     !confirm("O banco da loja já tem registros. Migrar vai sobrescrever os que tiverem o mesmo código. Continuar?")) return;
+  const chaves=["clientes","receitas","produtos","negocios","tarefas","os","parcelas"];
+  const total=chaves.reduce((s,k)=>s+(Array.isArray(antigo[k])?antigo[k].length:0),0);
+  if(!confirm(`Enviar ${total} registros deste navegador para o banco da loja?`)) return;
+  await importarParaOBanco(antigo, total);
+}
+/* Oferecido na primeira vez em que um admin abre um banco vazio tendo
+   dados antigos na máquina. A resposta fica guardada para não virar
+   pergunta toda sessão. */
+const MIG_K="iris_migracao_oferecida";
+function talvezOferecerMigracao(){
+  if(!podeAdmin() || !bancoVazioNaLoja()) return;
+  if(!dadosAntigosNoNavegador()) return;
+  let ja=null; try{ ja=localStorage.getItem(MIG_K); }catch(e){}
+  if(ja) return;
+  try{ localStorage.setItem(MIG_K,"1"); }catch(e){}
+  setTimeout(()=>{
+    if(confirm("Este navegador tem dados de uma versão anterior do Íris, e o banco da loja está vazio.\n\nQuer enviar esses dados para o banco agora?"))
+      migrarDoNavegador();
+    else
+      toast("Tudo bem — dá para fazer depois em Config → Backup & dados.");
+  }, 600);
+}
+
+/* ============================================================
+   Login e sessão
+   ============================================================ */
+function telaLogin(erro){
+  document.querySelector(".app").style.display = "none";
+  closeModal();
+  const el = document.getElementById("loginRoot");
+  el.style.display = "grid";
+  el.innerHTML = `
+    <form class="login-card" onsubmit="entrar(event)">
+      <div class="mark"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#fff" stroke-width="1.6"/><circle cx="12" cy="12" r="3.4" fill="#fff"/></svg></div>
+      <h2>Íris</h2>
+      <div class="sub">CRM da ótica — entre com seu usuário</div>
+      ${erro?`<div class="login-erro">${erro}</div>`:""}
+      <div class="field"><label>Usuário</label>
+        <input id="lgUser" autocomplete="username" autocapitalize="none" spellcheck="false" required></div>
+      <div class="field"><label>Senha</label>
+        <input id="lgSenha" type="password" autocomplete="current-password" required></div>
+      <button class="btn primary" id="lgBtn" type="submit" style="width:100%;justify-content:center;margin-top:6px">Entrar</button>
+    </form>`;
+  const u = document.getElementById("lgUser"); if(u) u.focus();
+}
+
+async function entrar(ev){
+  ev.preventDefault();
+  const btn = document.getElementById("lgBtn");
+  const usuario = document.getElementById("lgUser").value.trim();
+  const senha = document.getElementById("lgSenha").value;
+  btn.disabled = true; btn.textContent = "Entrando…";
+  try{
+    const r = await api({ acao:"login", usuario, senha });
+    SESSAO = { logado:true, nome:r.nome, papel:r.papel };
+    document.getElementById("loginRoot").style.display = "none";
+    document.querySelector(".app").style.display = "";
+    await carregarDados();
+    render();
+    talvezOferecerMigracao();
+  }catch(e){
+    // Rede fora é um problema diferente de senha errada, e dizer "usuário
+    // ou senha inválidos" para quem está sem internet manda a pessoa
+    // trocar a senha à toa.
+    const msg = (e && e.message && e.status) ? e.message
+      : "Não foi possível falar com o servidor. Verifique a conexão.";
+    telaLogin(msg);
+  }
+}
+
+async function sair(){
+  if(lerFila().length && !confirm("Ainda há alterações esperando para serem salvas. Sair mesmo assim?")) return;
+  try{ await api({acao:"logout"}); }catch(e){}
+  SESSAO = { logado:false, nome:"", papel:"vendedor" };
+  DB = bancoVazio();
+  try{ localStorage.removeItem(CACHE_K); }catch(e){}
+  telaLogin();
+}
+
 /* ---------- boot ---------- */
-initTema();
-initVidro();
-render();
+async function boot(){
+  initTema();
+  initVidro();
+  try{
+    const r = await api({ acao:"eu" });
+    if(r.logado){
+      SESSAO = { logado:true, nome:r.nome, papel:r.papel };
+      await carregarDados();
+      document.querySelector(".app").style.display = "";
+      render();
+      talvezOferecerMigracao();
+      return;
+    }
+    telaLogin();
+  }catch(e){
+    // Sem servidor: se houver cópia local E a pessoa já estava logada
+    // antes, abrir em leitura é melhor que uma tela morta. Mas fica dito.
+    const c = lerCache();
+    if(c){
+      DB = c; SESSAO = { logado:true, nome:"", papel:"vendedor" }; semRede = true;
+      document.querySelector(".app").style.display = "";
+      render(); marcarRede();
+      toast("Sem conexão — mostrando a última cópia salva neste aparelho.");
+      return;
+    }
+    telaLogin("Não foi possível falar com o servidor. Verifique a conexão.");
+  }
+}
+document.querySelector(".app").style.display = "none";
+boot();
 </script>
 </body>
 </html>
