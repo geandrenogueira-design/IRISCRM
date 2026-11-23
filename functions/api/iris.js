@@ -142,14 +142,29 @@ const jsonOu = (s, alt) => { try { return JSON.parse(s); } catch (e) { return al
 const mapa = {
   clientes: {
     paraFront: r => ({ id: r.id, nome: r.nome, telefone: r.telefone, email: r.email,
-      nascimento: r.nascimento || "", tags: jsonOu(r.tags, []), obs: r.obs, criadoEm: r.criado_em }),
-    sql: `INSERT INTO clientes (id,nome,telefone,email,nascimento,tags,obs,criado_em,atualizado_em)
-          VALUES (?,?,?,?,?,?,?,?,datetime('now'))
+      nascimento: r.nascimento || "", tags: jsonOu(r.tags, []), obs: r.obs,
+      optout: !!r.optout, criadoEm: r.criado_em }),
+    sql: `INSERT INTO clientes (id,nome,telefone,email,nascimento,tags,obs,optout,criado_em,atualizado_em)
+          VALUES (?,?,?,?,?,?,?,?,?,datetime('now'))
           ON CONFLICT(id) DO UPDATE SET nome=excluded.nome, telefone=excluded.telefone,
             email=excluded.email, nascimento=excluded.nascimento, tags=excluded.tags,
-            obs=excluded.obs, atualizado_em=datetime('now')`,
+            obs=excluded.obs, optout=excluded.optout, atualizado_em=datetime('now')`,
     bind: o => [o.id, o.nome || "", o.telefone || "", o.email || "", o.nascimento || null,
-      JSON.stringify(o.tags || []), o.obs || "", o.criadoEm || new Date().toISOString().slice(0, 10)],
+      JSON.stringify(o.tags || []), o.obs || "", o.optout ? 1 : 0,
+      o.criadoEm || new Date().toISOString().slice(0, 10)],
+  },
+  // Quem registrou o envio vem da sessão, não do corpo: o navegador
+  // não escolhe em nome de quem uma mensagem saiu.
+  followups: {
+    paraFront: r => ({ id: r.id, clienteId: r.cliente_id, regra: r.regra, ref: r.ref,
+      status: r.status, mensagem: r.mensagem, feitoEm: r.feito_em, por: r.por || "" }),
+    sql: `INSERT INTO followups (id,cliente_id,regra,ref,status,mensagem,feito_em,usuario_id)
+          VALUES (?,?,?,?,?,?,?,?)
+          ON CONFLICT(id) DO UPDATE SET status=excluded.status, mensagem=excluded.mensagem,
+            feito_em=excluded.feito_em, usuario_id=excluded.usuario_id`,
+    bind: (o, u) => [o.id, o.clienteId, o.regra || "", o.ref || "",
+      o.status === "pulado" ? "pulado" : "enviado", String(o.mensagem || "").slice(0, 2000),
+      o.feitoEm || new Date().toISOString().slice(0, 10), u ? u.id : null],
   },
   receitas: {
     paraFront: r => ({ id: r.id, clienteId: r.cliente_id, data: r.data, tipo: r.tipo,
@@ -214,7 +229,10 @@ const mapa = {
   },
   os: {
     paraFront: r => ({ id: r.id, negocioId: r.negocio_id, clienteId: r.cliente_id,
-      numero: r.numero, status: r.status, laboratorio: r.laboratorio,
+      // Bancos gravados antes desta correção têm "1031.0": número JS entrando
+      // numa coluna TEXT vira real. Limpo na leitura e gravo como texto.
+      numero: String(r.numero == null ? "" : r.numero).replace(/\.0+$/, ""),
+      status: r.status, laboratorio: r.laboratorio,
       enviadoEm: r.enviado_em, previsaoEm: r.previsao_em, chegouEm: r.chegou_em,
       entregueEm: r.entregue_em, obs: r.obs }),
     sql: `INSERT INTO os (id,negocio_id,cliente_id,numero,status,laboratorio,
@@ -225,7 +243,8 @@ const mapa = {
             laboratorio=excluded.laboratorio, enviado_em=excluded.enviado_em,
             previsao_em=excluded.previsao_em, chegou_em=excluded.chegou_em,
             entregue_em=excluded.entregue_em, obs=excluded.obs`,
-    bind: o => [o.id, o.negocioId || null, o.clienteId, o.numero || "", o.status,
+    bind: o => [o.id, o.negocioId || null, o.clienteId,
+      String(o.numero == null ? "" : o.numero).replace(/\.0+$/, ""), o.status,
       o.laboratorio || "", o.enviadoEm || null, o.previsaoEm || null,
       o.chegouEm || null, o.entregueEm || null, o.obs || ""],
   },
@@ -281,18 +300,64 @@ const SQL_VENDEDOR = {
 };
 
 /* ============================================================
+   Esquema — o banco de quem já usava o Íris antes do follow-up
+   não tem a tabela followups nem a coluna clientes.optout. Em vez
+   de depender de alguém lembrar de rodar um SQL no Console, a API
+   acerta isso sozinha na primeira requisição de cada instância.
+   Tudo aqui é idempotente: rodar de novo não muda nada.
+   ============================================================ */
+let esquemaOk = false;
+async function garantirEsquema(env) {
+  if (esquemaOk) return;
+  await env.DB.batch([
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS followups (
+      id TEXT PRIMARY KEY,
+      cliente_id TEXT NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
+      regra TEXT NOT NULL, ref TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL CHECK (status IN ('enviado','pulado')),
+      mensagem TEXT NOT NULL DEFAULT '', feito_em TEXT NOT NULL,
+      usuario_id TEXT REFERENCES usuarios(id) ON DELETE SET NULL)`),
+    env.DB.prepare(`CREATE INDEX IF NOT EXISTS ix_followups_cliente ON followups(cliente_id, feito_em)`),
+    env.DB.prepare(`CREATE INDEX IF NOT EXISTS ix_followups_em ON followups(feito_em)`),
+  ]);
+  // ALTER TABLE não tem IF NOT EXISTS no SQLite. Pergunto antes de alterar,
+  // para não depender de erro como controle de fluxo.
+  const cols = await env.DB.prepare(`PRAGMA table_info(clientes)`).all();
+  const temOptout = (cols.results || []).some(c => c.name === "optout");
+  if (!temOptout) {
+    try {
+      await env.DB.prepare(`ALTER TABLE clientes ADD COLUMN optout INTEGER NOT NULL DEFAULT 0`).run();
+    } catch (e) {
+      // Duas instâncias podem chegar aqui ao mesmo tempo; a segunda erra com
+      // "duplicate column", que é o estado que se queria. Qualquer outro erro sobe.
+      if (!/duplicate column/i.test(String(e && e.message))) throw e;
+    }
+  }
+  esquemaOk = true;
+}
+
+/* ============================================================
    Leitura
    ============================================================ */
+// Follow-up carregado: 400 dias. A régua só oferece uma etapa até
+// poucas semanas depois da data dela, então um registro mais velho que
+// isso nunca decide se algo entra na fila — só pesaria no download.
+const FOLLOWUP_DIAS = 400;
+
 async function carregarTudo(env, usuario) {
   const tabelas = ["clientes", "receitas", "produtos", "negocios", "tarefas", "os", "parcelas"];
   const res = await env.DB.batch([
     ...tabelas.map(t => env.DB.prepare(`SELECT * FROM ${t}`)),
     env.DB.prepare(`SELECT * FROM negocio_itens ORDER BY negocio_id, ordem`),
     env.DB.prepare(`SELECT dados FROM config WHERE id = 1`),
+    env.DB.prepare(`SELECT f.*, u.nome AS por FROM followups f
+                      LEFT JOIN usuarios u ON u.id = f.usuario_id
+                     WHERE f.feito_em >= date('now', ?)`).bind(`-${FOLLOWUP_DIAS} days`),
   ]);
 
   const DB = {};
   tabelas.forEach((t, i) => { DB[t] = (res[i].results || []).map(mapa[t].paraFront); });
+  DB.followups = (res[tabelas.length + 2].results || []).map(mapa.followups.paraFront);
 
   // Costura os itens de volta em cada negócio.
   const porNegocio = new Map();
@@ -331,7 +396,7 @@ async function gravar(env, usuario, mudancas) {
     const variante = (!admin && SQL_VENDEDOR[ent]) ? SQL_VENDEDOR[ent] : mapa[ent];
     for (const obj of (lista || [])) {
       if (!obj || !obj.id) return { erro: `Registro sem id em ${ent}` };
-      stmts.push(env.DB.prepare(variante.sql).bind(...variante.bind(obj)));
+      stmts.push(env.DB.prepare(variante.sql).bind(...variante.bind(obj, usuario)));
       // Itens do negócio: apaga e regrava. A lista é pequena e assim
       // item removido some de verdade, em vez de virar órfão.
       if (ent === "negocios") {
@@ -381,6 +446,8 @@ const json = (obj, status, headers) => new Response(JSON.stringify(obj), {
 
 export async function onRequestPost({ request, env }) {
   if (!env.DB) return json({ erro: "Banco não configurado (binding DB ausente)." }, 500);
+  try { await garantirEsquema(env); }
+  catch (e) { return json({ erro: "Falha ao preparar o banco: " + (e.message || e) }, 500); }
 
   let corpo;
   try { corpo = await request.json(); }

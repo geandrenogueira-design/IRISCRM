@@ -193,6 +193,7 @@
   .btn.ghost{background:transparent;border-color:transparent}
   .btn.ghost:hover{background:var(--surface-2);box-shadow:none}
   .btn.sm{padding:5px 9px;font-size:12.5px;border-radius:8px}
+  a.btn{text-decoration:none}
   .btn.wa{background:var(--ok-wash);border-color:transparent;color:var(--ok)}
   .btn.wa:hover{filter:brightness(.96)}
   .chip{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;padding:2px 9px;border-radius:20px;letter-spacing:.01em}
@@ -317,6 +318,34 @@
   @media (max-width:700px){
     .fila-item{grid-template-columns:3px 1fr;row-gap:9px}
     .fila-acoes{grid-column:2;justify-content:flex-start}
+  }
+
+  /* ---------- Follow-up ---------- */
+  .fu-item{display:grid;grid-template-columns:minmax(170px,230px) 1fr auto;gap:14px;padding:12px 16px;
+    border-bottom:1px solid var(--line-soft);align-items:center}
+  .fu-item:last-child{border-bottom:0}
+  .fu-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:3px;font-size:12px}
+  .fu-msg{font-size:12.5px;color:var(--ink-2);line-height:1.45;background:var(--surface-2);border:1px solid var(--line-soft);
+    border-radius:9px;padding:7px 10px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .fu-acoes{display:flex;gap:6px;align-items:center;flex:none}
+  .fu-prev{font-size:13px;line-height:1.5;white-space:pre-wrap;background:var(--ok-wash);color:var(--ink);
+    border-radius:10px 10px 10px 2px;padding:10px 12px;max-width:440px}
+  .regua-item{display:grid;grid-template-columns:22px 36px 1fr auto;gap:12px;align-items:center;padding:12px 16px;
+    border-bottom:1px solid var(--line-soft);transition:opacity var(--fast) var(--ease)}
+  .regua-item:last-child{border-bottom:0}
+  .regua-item.off{opacity:.5}
+  .regua-tg input{width:16px;height:16px;accent-color:var(--accent);cursor:pointer}
+  .regua-ic{width:36px;height:36px;border-radius:10px;background:var(--accent-wash);color:var(--accent-ink);display:grid;place-items:center}
+  .regua-quando{font-size:11.5px;font-weight:700;color:var(--accent-ink);text-transform:uppercase;letter-spacing:.03em}
+  .regua-txt{font-size:12.5px;color:var(--ink-3);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .vars{display:flex;flex-wrap:wrap;gap:6px}
+  .vars button{border:1px solid var(--line);background:var(--surface);color:var(--ink-2);font:600 11.5px var(--mono);
+    padding:3px 8px;border-radius:7px;cursor:pointer}
+  .vars button:hover{border-color:var(--accent);color:var(--accent-ink)}
+  @media (max-width:820px){
+    .fu-item{grid-template-columns:1fr;row-gap:9px}
+    .regua-item{grid-template-columns:22px 36px 1fr}
+    .regua-item>div:last-child{grid-column:3}
   }
 
   /* ---------- Recompra ---------- */
@@ -488,7 +517,7 @@ const CACHE_K = "iris_cache_v2";
 const FILA_K  = "iris_fila_v2";
 
 function bancoVazio(){
-  return { clientes:[], receitas:[], produtos:[], negocios:[], tarefas:[], os:[], parcelas:[],
+  return { clientes:[], receitas:[], produtos:[], negocios:[], tarefas:[], os:[], parcelas:[], followups:[],
     config:{ nome:"Íris", metaMes:7500, cicloRecompraMeses:18, validadePadrao:12,
              ddi:"55", prazoLabDias:7, laboratorios:[] } };
 }
@@ -854,6 +883,15 @@ function plural(n,s,p){ return n+" "+(Math.abs(n)===1?s:p); }
 function filaTrabalho(){
   const t=today(), itens=[];
 
+  // A régua de follow-up cobre três coisas que a fila já avisava (receita
+  // vencendo, orçamento parado, aniversário). Quando a etapa da régua está
+  // pendente para aquele cliente, ela substitui o aviso antigo: a mesma
+  // pessoa aparecer duas vezes empurra quem precisa de outra coisa para baixo.
+  const fu = fuPendentes().hoje;
+  const fuReceita = new Set(fu.filter(e=>e.regra.gatilho==="receita").map(e=>e.cliente.id));
+  const fuOrcamento = new Set(fu.filter(e=>e.regra.gatilho==="orcamento").map(e=>e.ctx.negocio && e.ctx.negocio.id));
+  const fuAniversario = fuCfg().regras.some(r=>r.ativo && r.gatilho==="aniversario");
+
   // 1. Tarefa vencida — o fato é a data, não a importância da tarefa.
   tarefasVencidas().forEach(tr=>{
     const c=cliente(tr.clienteId), atraso=diasEntre(t,d(tr.venceEm));
@@ -864,7 +902,7 @@ function filaTrabalho(){
   });
 
   // 2. Recompra — só alerta e atenção. "Aproximando do ciclo" não é trabalho de hoje.
-  recompraList().filter(x=>x.info.status==="alert"||x.info.status==="warn").forEach(x=>{
+  recompraList().filter(x=>(x.info.status==="alert"||x.info.status==="warn") && !fuReceita.has(x.c.id)).forEach(x=>{
     const venc = x.info.status==="alert";
     itens.push({ peso:x.info.score, tom:venc?"alert":"warn", tipo:"Recompra", cliente:x.c,
       fato:`${escFila(x.c.nome)} — ${escFila(x.info.motivo)}`,
@@ -892,21 +930,286 @@ function filaTrabalho(){
   // 5. Negócio parado no funil. 14 dias é o limiar; abaixo disso é negociação normal.
   pipelineAberto().forEach(n=>{
     const ref=n.atualizadoEm||n.criadoEm; if(!ref) return;
-    const parado=diasEntre(t,d(ref)); if(parado<14) return;
+    const parado=diasEntre(t,d(ref)); if(parado<14 || fuOrcamento.has(n.id)) return;
     const c=cliente(n.clienteId), st=stage(n.etapa);
     itens.push({ peso:45+parado, tom:"neutral", tipo:"Funil", cliente:c,
       fato:`"${escFila(n.titulo)}" parado em ${escFila(st?st.nome:n.etapa)} há ${plural(parado,"dia","dias")}`,
       sugestao:"Retomar ou marcar como perdido — funil parado falseia a previsão" });
   });
 
-  // 6. Aniversário na semana. Último em peso, de propósito.
-  aniversariantes(7).forEach(a=>{
+  // 6. Follow-up da régua: a mensagem já vem pronta, o botão envia e registra.
+  fu.forEach(e=>{
+    itens.push({ peso:e.peso, tom:"accent", tipo:"Follow-up", cliente:e.cliente, semWa:true,
+      fato:`${escFila(e.regra.nome)} — ${escFila(e.cliente.nome)} · ${escFila(fuDescPrazo(e.regra).toLowerCase())}`,
+      sugestao:"Mensagem pronta; revise se quiser personalizar",
+      acao:`${fuBotaoEnviar(e,"Enviar")}<button class="btn sm" onclick="fuRevisar('${e.id}')">Revisar</button>` });
+  });
+
+  // 7. Aniversário na semana. Último em peso, de propósito. Com a etapa de
+  // aniversário ligada na régua, quem cuida do dia é ela.
+  if(!fuAniversario) aniversariantes(7).forEach(a=>{
     itens.push({ peso:30+(7-a.dias), tom:"ok", tipo:"Relacionamento", cliente:a.c,
       fato:`${escFila(a.c.nome)} faz ${a.idade} anos ${a.dias===0?"hoje":"em "+plural(a.dias,"dia","dias")}`,
       sugestao:"Parabenizar sem oferta junto: a mensagem perde o sentido com preço dentro" });
   });
 
   return itens.sort((a,b)=>b.peso-a.peso).slice(0,25);
+}
+
+/* ============================================================
+   FOLLOW-UP — régua de relacionamento
+
+   Cada etapa da régua é uma regra: um gatilho (venda, entrega,
+   receita, orçamento, inatividade, aniversário), um prazo e um texto.
+   O sistema calcula sozinho quem entra em cada etapa e em que dia.
+   O envio sai do WhatsApp do aparelho, com um toque — e o registro
+   do envio vai para o banco, para a mesma etapa nunca sair duas vezes
+   nem por dois vendedores.
+
+   Três travas contra mensagem fora de hora:
+     janela   — cada etapa só é oferecida por alguns dias depois da
+                data dela. Agradecer uma compra de dois meses atrás
+                soa a sistema esquecido, não a cuidado.
+     intervalo — cliente que recebeu mensagem há poucos dias espera
+                o intervalo mínimo antes da próxima (aniversário não
+                espera: a data é a data).
+     opt-out  — cliente que pediu para não receber sai da régua
+                inteira (LGPD). Fica marcado na ficha.
+   ============================================================ */
+function isoLocal(x){ return x.getFullYear()+"-"+String(x.getMonth()+1).padStart(2,"0")+"-"+String(x.getDate()).padStart(2,"0"); }
+function hojeISO(){ return isoLocal(today()); }
+function somaDias(dt,n){ const x=new Date(dt); x.setDate(x.getDate()+n); return x; }
+function primeiroNome(n){ return String(n||"").trim().split(/\s+/)[0]||""; }
+
+// janela: por quantos dias depois da data a etapa ainda é oferecida.
+const FU_GATILHOS = {
+  venda:      { nome:"Depois da venda",           unidade:"dias",  janela:7,  peso:55,
+                ajuda:"Conta a partir do dia em que a venda foi fechada." },
+  entrega:    { nome:"Depois da entrega",         unidade:"dias",  janela:30, peso:50,
+                ajuda:"Conta a partir da entrega do óculos (OS marcada como entregue). Venda sem OS conta da data da venda." },
+  receita:    { nome:"Antes de a receita vencer", unidade:"dias",  janela:45, peso:65,
+                ajuda:"Quantos dias antes do vencimento da receita mais recente do cliente." },
+  orcamento:  { nome:"Orçamento sem resposta",    unidade:"dias",  janela:21, peso:70,
+                ajuda:"Dias parado na etapa “Orçamento enviado” do funil." },
+  inativo:    { nome:"Cliente inativo",           unidade:"meses", janela:60, peso:40,
+                ajuda:"Meses desde a última compra, sem nenhum negócio aberto." },
+  aniversario:{ nome:"Aniversário",               unidade:null,    janela:2,  peso:60,
+                ajuda:"No dia do aniversário, com dois dias de tolerância se ninguém abrir o Íris naquele dia." },
+};
+const FU_ICONES = {
+  venda:'M20 6L9 17l-5-5',
+  entrega:'M2 13a4 4 0 108 0 4 4 0 00-8 0zM14 13a4 4 0 108 0 4 4 0 00-8 0zM10 13h4M2 13l2-6M22 13l-2-6',
+  receita:'M7 2v3M17 2v3M3 8h18M4 5h16v16H4zM8 12h3v3H8z',
+  orcamento:'M4 5h16v11H9l-5 4zM8 10h8',
+  inativo:'M12 7v5l3 2M12 21a9 9 0 110-18 9 9 0 010 18z',
+  aniversario:'M4 11h16v10H4zM3 7h18v4H3zM12 7v14M12 7C10 3 6 3 6 5.5S12 7 12 7zM12 7c2-4 6-4 6-1.5S12 7 12 7z',
+};
+const FU_VARS = [
+  ["nome","primeiro nome do cliente"], ["nome_completo","nome completo"], ["otica","nome da ótica"],
+  ["vendedor","primeiro nome de quem envia"], ["produto","título do negócio"], ["data_compra","data da compra"],
+  ["vencimento_receita","vencimento da receita"], ["os","número da OS"],
+];
+
+function fuRegrasPadrao(){
+  return [
+    { id:"agradecimento", nome:"Agradecimento", gatilho:"venda", prazo:1, ativo:true,
+      texto:"Oi, {nome}! Obrigado por escolher a {otica}. Se aparecer qualquer dúvida com seus óculos, pode chamar por aqui que a gente resolve." },
+    { id:"ajuste", nome:"Limpeza e ajuste", gatilho:"entrega", prazo:30, ativo:true,
+      texto:"Oi, {nome}! Faz um mês que você está com os óculos novos. Como está a adaptação? Se quiser, passe aqui para uma limpeza e um ajuste na armação. É rápido." },
+    { id:"exame", nome:"Lembrete de novo exame", gatilho:"receita", prazo:30, ativo:true,
+      texto:"Oi, {nome}! Sua receita vence em {vencimento_receita}. Vale refazer o exame para conferir se o grau mudou. Posso te ajudar a marcar?" },
+    { id:"orcamento", nome:"Retomar orçamento", gatilho:"orcamento", prazo:3, ativo:true,
+      texto:"Oi, {nome}! Ficou alguma dúvida sobre o orçamento que te passei? Se quiser, monto outra opção que caiba melhor no que você precisa." },
+    { id:"inativo", nome:"Cliente inativo", gatilho:"inativo", prazo:12, ativo:true,
+      texto:"Oi, {nome}! Faz um tempo que você não passa aqui na {otica}. Se os óculos estiverem frouxos, riscados ou a vista cansando, vale uma revisão. Quando quiser, é só chamar." },
+    { id:"aniversario", nome:"Aniversário", gatilho:"aniversario", prazo:0, ativo:true,
+      texto:"Feliz aniversário, {nome}! Toda a equipe da {otica} deseja um ano muito bom para você." },
+  ];
+}
+// A régua mora na config da loja. Loja que nunca mexeu nela usa a padrão.
+function fuCfg(){
+  const c = (DB.config && DB.config.followup) || {};
+  return {
+    regras: Array.isArray(c.regras) && c.regras.length ? c.regras : fuRegrasPadrao(),
+    intervaloMin: c.intervaloMin!=null ? Math.max(0, Number(c.intervaloMin)||0) : 7,
+  };
+}
+function fuLista(){ if(!Array.isArray(DB.followups)) DB.followups=[]; return DB.followups; }
+function fuRegra(id){ return fuCfg().regras.find(r=>r.id===id); }
+function fuNomeRegra(id){ const r=fuRegra(id); return r ? r.nome : "Etapa removida"; }
+function fuDescPrazo(r){
+  const p=Number(r.prazo)||0;
+  if(r.gatilho==="venda")     return p===0 ? "No dia da venda" : plural(p,"dia","dias")+" após a venda";
+  if(r.gatilho==="entrega")   return p===0 ? "No dia da entrega" : plural(p,"dia","dias")+" após a entrega";
+  if(r.gatilho==="receita")   return p===0 ? "No dia em que a receita vence" : plural(p,"dia","dias")+" antes de a receita vencer";
+  if(r.gatilho==="orcamento") return plural(p,"dia","dias")+" com orçamento sem resposta";
+  if(r.gatilho==="inativo")   return plural(p,"mês","meses")+" sem comprar";
+  if(r.gatilho==="aniversario") return "No dia do aniversário";
+  return "";
+}
+
+/* Todos os momentos da régua, passados e futuros, para os clientes
+   pedidos (ou todos). Cada evento tem um id estável — regra + referência —
+   que é o mesmo id do registro de envio. É isso que impede repetição. */
+function fuEventos(clienteId){
+  const ev=[], t=today();
+  const ativas=fuCfg().regras.filter(r=>r.ativo);
+  if(!ativas.length) return ev;
+  const clientes = clienteId ? DB.clientes.filter(c=>c.id===clienteId) : DB.clientes;
+  const alvo = new Set(clientes.map(c=>c.id));
+  const porId = new Map(DB.clientes.map(c=>[c.id,c]));
+
+  // Índices montados uma vez: com milhares de clientes, procurar compra
+  // e receita cliente a cliente deixaria a tela lenta a cada render.
+  const ganhos = DB.negocios.filter(n=>n.etapa==="ganho" && n.fechadoEm && alvo.has(n.clienteId));
+  const ultCompra = new Map();
+  ganhos.forEach(n=>{ const u=ultCompra.get(n.clienteId); if(!u || n.fechadoEm>u) ultCompra.set(n.clienteId,n.fechadoEm); });
+  const comAberto = new Set(DB.negocios.filter(n=>n.etapa!=="ganho" && n.etapa!=="perdido").map(n=>n.clienteId));
+  const ultRx = new Map();
+  DB.receitas.forEach(r=>{ if(!alvo.has(r.clienteId)) return; const u=ultRx.get(r.clienteId); if(!u || r.data>u.data) ultRx.set(r.clienteId,r); });
+  const osPorNeg = new Map(DB.os.filter(o=>o.negocioId).map(o=>[o.negocioId,o]));
+
+  const add=(regra,c,ref,due,ctx)=>{
+    if(!c || !due || isNaN(due)) return;
+    ev.push({ id:regra.id+":"+ref, regra, cliente:c, ref, due, ctx:ctx||{} });
+  };
+  for(const r of ativas){
+    const p = Math.max(0, Number(r.prazo)||0);
+    if(r.gatilho==="venda"){
+      ganhos.forEach(n=>add(r, porId.get(n.clienteId), n.id, somaDias(d(n.fechadoEm),p), {negocio:n}));
+    } else if(r.gatilho==="entrega"){
+      ganhos.forEach(n=>{
+        const o=osPorNeg.get(n.id);
+        // Com OS, o relógio só começa quando o óculos sai da loja.
+        if(o && !o.entregueEm) return;
+        add(r, porId.get(n.clienteId), n.id, somaDias(d(o?o.entregueEm:n.fechadoEm),p), {negocio:n, os:o||null});
+      });
+    } else if(r.gatilho==="receita"){
+      ultRx.forEach((rx,cid)=>{
+        const venc=addMonths(rx.data, rx.validadeMeses);
+        add(r, porId.get(cid), rx.id, somaDias(venc,-p), {receita:rx, venc});
+      });
+    } else if(r.gatilho==="orcamento"){
+      DB.negocios.filter(n=>n.etapa==="orcamento" && alvo.has(n.clienteId)).forEach(n=>{
+        const base=n.atualizadoEm||n.criadoEm; if(!base) return;
+        // A data entra na referência: orçamento que andou e voltou é outra conversa.
+        add(r, porId.get(n.clienteId), n.id+"@"+base, somaDias(d(base),p), {negocio:n});
+      });
+    } else if(r.gatilho==="inativo"){
+      ultCompra.forEach((ult,cid)=>{
+        if(comAberto.has(cid)) return;          // quem está negociando não está inativo
+        add(r, porId.get(cid), cid+"@"+ult, addMonths(ult,p), {ultima:ult});
+      });
+    } else if(r.gatilho==="aniversario"){
+      clientes.forEach(c=>{
+        if(!c.nascimento) return; const nb=d(c.nascimento); if(!nb) return;
+        [t.getFullYear()-1, t.getFullYear(), t.getFullYear()+1].forEach(a=>
+          add(r, c, c.id+"@"+a, new Date(a, nb.getMonth(), nb.getDate()), {}));
+      });
+    }
+  }
+  return ev;
+}
+
+/* O que está na hora de mandar. Devolve duas listas:
+     hoje    — pode enviar agora
+     seguros — está na data, mas o cliente recebeu mensagem há pouco;
+               libera quando o intervalo mínimo passar */
+function fuPendentes(){
+  const t=today(), cfg=fuCfg();
+  const feitos=new Set(fuLista().map(f=>f.id));
+  const ultimoEnvio=new Map();
+  fuLista().forEach(f=>{
+    if(f.status!=="enviado") return;
+    const r=fuRegra(f.regra); if(r && r.gatilho==="aniversario") return;
+    const u=ultimoEnvio.get(f.clienteId); if(!u || f.feitoEm>u) ultimoEnvio.set(f.clienteId,f.feitoEm);
+  });
+  const hoje=[], seguros=[];
+  for(const e of fuEventos()){
+    if(feitos.has(e.id) || e.cliente.optout) continue;
+    const atraso=diasEntre(t,e.due);
+    const g=FU_GATILHOS[e.regra.gatilho]||{janela:7,peso:50};
+    if(atraso<0 || atraso>g.janela) continue;
+    // Lembrete de exame só faz sentido enquanto a receita vale. Vencida,
+    // o texto "vence em" ficaria errado, e quem assume é o motor de recompra.
+    if(e.regra.gatilho==="receita" && e.ctx.venc && e.ctx.venc<t) continue;
+    e.atraso=atraso;
+    e.peso=g.peso+Math.min(atraso,20);
+    const ult=ultimoEnvio.get(e.cliente.id);
+    if(e.regra.gatilho!=="aniversario" && ult && cfg.intervaloMin>0){
+      const libera=somaDias(d(ult),cfg.intervaloMin);
+      if(libera>t){ e.libera=libera; seguros.push(e); continue; }
+    }
+    hoje.push(e);
+  }
+  hoje.sort((a,b)=>b.peso-a.peso || a.cliente.nome.localeCompare(b.cliente.nome));
+  seguros.sort((a,b)=>a.libera-b.libera);
+  return { hoje, seguros };
+}
+function fuAchar(id){ const p=fuPendentes(); return p.hoje.find(e=>e.id===id) || p.seguros.find(e=>e.id===id) || null; }
+
+// Próximos contatos de um cliente — o que a régua ainda vai fazer.
+function fuProximos(c){
+  const t=today(), feitos=new Set(fuLista().map(f=>f.id));
+  if(c.optout) return [];
+  return fuEventos(c.id).filter(e=>!feitos.has(e.id) && e.due>t)
+    .sort((a,b)=>a.due-b.due).slice(0,4);
+}
+
+function fuTexto(e){
+  const c=e.cliente, x=e.ctx||{};
+  const n=x.negocio || null;
+  const o=x.os || (n ? osDoNegocio(n.id) : null);
+  let venc=x.venc || null;
+  if(!venc){
+    const rx=DB.receitas.filter(r=>r.clienteId===c.id).sort((a,b)=>a.data<b.data?1:-1)[0];
+    if(rx) venc=addMonths(rx.data, rx.validadeMeses);
+  }
+  const vars={
+    nome: primeiroNome(c.nome), nome_completo: c.nome, otica: DB.config.nome||"",
+    vendedor: primeiroNome(SESSAO.nome), produto: n ? n.titulo : "",
+    data_compra: n && n.fechadoEm ? fmtDate(n.fechadoEm) : (x.ultima ? fmtDate(x.ultima) : ""),
+    vencimento_receita: venc ? venc.toLocaleDateString("pt-BR") : "",
+    os: o ? String(o.numero) : "",
+  };
+  return String(e.regra.texto||"")
+    .replace(/\{(\w+)\}/g, (m,k)=> (k in vars) ? vars[k] : m)
+    .replace(/[ \t]{2,}/g," ").trim();
+}
+
+/* Registro do envio. O id do registro é o id do evento: dois aparelhos
+   marcando a mesma etapa escrevem na mesma linha, nunca em duas. */
+function fuRegistrar(e, status, mensagem){
+  const rec={ id:e.id, clienteId:e.cliente.id, regra:e.regra.id, ref:e.ref, status,
+    mensagem:mensagem||"", feitoEm:hojeISO(), por:SESSAO.nome||"" };
+  const L=fuLista(); const i=L.findIndex(f=>f.id===rec.id);
+  if(i>=0) L[i]=rec; else L.push(rec);
+  salvar({followups:[rec]});
+  return rec;
+}
+
+/* Resultado por etapa, nos últimos 90 dias. "Voltou e comprou" é venda
+   fechada pelo mesmo cliente em até 30 dias depois da mensagem. É
+   coincidência no tempo, não prova de causa — a tela diz isso. */
+function fuResultados(){
+  const t=today(), ini=isoLocal(somaDias(t,-90));
+  const ganhos=DB.negocios.filter(n=>n.etapa==="ganho" && n.fechadoEm);
+  const porRegra=new Map();
+  // Uma venda precedida por duas mensagens conta nas duas etapas, mas só
+  // uma vez no total — senão o total infla e a régua parece render o dobro.
+  const vendasTotal=new Map();
+  fuLista().filter(f=>f.feitoEm>=ini).forEach(f=>{
+    if(!porRegra.has(f.regra)) porRegra.set(f.regra,{enviados:0,pulados:0,voltaram:0,valor:0});
+    const m=porRegra.get(f.regra);
+    if(f.status==="pulado"){ m.pulados++; return; }
+    m.enviados++;
+    const lim=isoLocal(somaDias(d(f.feitoEm),30));
+    const venda=ganhos.filter(n=>n.clienteId===f.clienteId && n.fechadoEm>f.feitoEm && n.fechadoEm<=lim)
+      .sort((a,b)=>a.fechadoEm<b.fechadoEm?-1:1)[0];
+    if(venda){ m.voltaram++; m.valor+=venda.valor; vendasTotal.set(venda.id, venda.valor); }
+  });
+  let valorTotal=0; vendasTotal.forEach(v=>{ valorTotal+=v; });
+  return { porRegra, vendas:vendasTotal.size, valor:valorTotal };
 }
 
 /* ============================================================
@@ -919,11 +1222,12 @@ const VIEWS = [
   {id:"financeiro",nome:"Financeiro",icon:'M3 6h18v12H3zM3 10h18M7 15h3'},
   {id:"clientes", nome:"Clientes",  icon:'M12 12a4 4 0 100-8 4 4 0 000 8zM4 20a8 8 0 0116 0'},
   {id:"recompra", nome:"Recompra",  icon:'M21 12a9 9 0 11-3-6.7M21 3v5h-5'},
+  {id:"followup", nome:"Follow-up", icon:'M4 5h16v11H9l-5 4zM8 10h8'},
   {id:"produtos", nome:"Produtos",  icon:'M3 7l9-4 9 4-9 4zM3 7v10l9 4 9-4V7'},
   {id:"agenda",   nome:"Agenda",    icon:'M7 2v3M17 2v3M3 8h18M4 5h16v16H4z'},
   {id:"config",   nome:"Config",    icon:'M12 15a3 3 0 100-6 3 3 0 000 6zM3 12h2M19 12h2M12 3v2M12 19v2'},
 ];
-let state = { view:"painel", clienteSel:null, buscaCli:"", buscaProd:"", filtroRec:"todos" };
+let state = { view:"painel", clienteSel:null, buscaCli:"", buscaProd:"", filtroRec:"todos", fuAba:"hoje" };
 
 /* Financeiro e Config são do admin. Esconder no menu não bastaria — a
    API também não entrega parcelas ao vendedor — mas evita que ele bata
@@ -938,12 +1242,14 @@ function renderNav(){
   const pend = tarefasVencidas().length;
   const prontos = DB.os.filter(o=>o.status==="pronto").length;
   const atras = parcelasAtrasadas().length;
+  const fuHoje = fuPendentes().hoje.length;
   $("#nav").innerHTML = viewsVisiveis().map(v=>{
     let badge="";
     if(v.id==="recompra" && rec) badge=`<span class="badge num">${rec}</span>`;
     if(v.id==="agenda" && pend) badge=`<span class="badge num">${pend}</span>`;
     if(v.id==="oficina" && prontos) badge=`<span class="badge num">${prontos}</span>`;
     if(v.id==="financeiro" && atras) badge=`<span class="badge num">${atras}</span>`;
+    if(v.id==="followup" && fuHoje) badge=`<span class="badge num">${fuHoje}</span>`;
     return `<button class="${state.view===v.id?'active':''}" onclick="go('${v.id}')">
       <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="${v.icon}"/></svg>
       ${v.nome}${badge}</button>`;
@@ -1033,6 +1339,7 @@ function renderAgora(){
   if(state.view==="financeiro") return renderFinanceiro(app);
   if(state.view==="clientes") return state.clienteSel?renderCliente360(app):renderClientes(app);
   if(state.view==="recompra") return renderRecompra(app);
+  if(state.view==="followup") return renderFollowup(app);
   if(state.view==="produtos") return renderProdutos(app);
   if(state.view==="agenda") return renderAgenda(app);
   if(state.view==="config") return renderConfig(app);
@@ -1335,6 +1642,7 @@ function renderCliente360(app){
           :emptyBox('Sem compras ainda.')}
         </div>
       </div>
+      ${fuCardCliente(c)}
       ${osAbertas.length?`<div class="card"><div class="card-h"><h3>Na oficina</h3><span class="count">${osAbertas.length}</span></div>
         <table><tbody>${osAbertas.map(o=>{const st=OS_STATUS.find(s=>s.id===o.status);
           return `<tr><td><div class="strong">OS ${o.numero}</div><div class="muted" style="font-size:12px">${o.laboratorio||'—'}</div></td>
@@ -1484,7 +1792,7 @@ function renderFila(){
     ${emptyBox('Nada exige ação hoje — nenhum atraso, receita vencida ou óculos parado.')}</div>`;
 
   const maxPeso=Math.max(...fila.map(i=>i.peso))||1;
-  const cor={alert:"var(--alert)",warn:"var(--warn)",ok:"var(--ok)",neutral:"var(--ink-3)"};
+  const cor={alert:"var(--alert)",warn:"var(--warn)",ok:"var(--ok)",neutral:"var(--ink-3)",accent:"var(--accent)"};
 
   const linhas=fila.map(i=>{
     const c=i.cliente;
@@ -1492,7 +1800,7 @@ function renderFila(){
     // calculado sobre dias de atraso e vencimento. Opacidade parcial evita que a
     // barra pese mais no olho do que o próprio fato.
     const alt=Math.max(18,Math.round(i.peso/maxPeso*100));
-    const wa = c ? `<a class="btn wa sm" target="_blank" rel="noopener"
+    const wa = c && !i.semWa ? `<a class="btn wa sm" target="_blank" rel="noopener"
       href="${waLink(c.telefone,'Olá, '+c.nome.split(' ')[0]+'!')}">wa</a>` : '';
     const ficha = c ? `<button class="btn sm ghost" onclick="abrirCliente('${c.id}')">ficha</button>` : '';
     return `<div class="fila-item">
@@ -1510,7 +1818,7 @@ function renderFila(){
 
   return `<div class="card" style="margin-bottom:16px">
     <div class="card-h"><h3>Fila de trabalho</h3><span class="count">${fila.length} ${fila.length===1?'item':'itens'}</span></div>
-    <div class="fila-legenda">Uma lista só, atravessando tarefas, recompra, oficina, crediário, funil e aniversários — ordenada por evidência.
+    <div class="fila-legenda">Uma lista só, atravessando tarefas, recompra, oficina, crediário, funil, follow-up e aniversários — ordenada por evidência.
       O <b>fato</b> é o que está no banco e você pode conferir. A <b>sugestão</b> é opinião do sistema: discorde dela à vontade.</div>
     ${linhas}</div>`;
 }
@@ -1518,6 +1826,362 @@ function tarefaTipoLabel(t){ return {ligacao:"Ligação",whatsapp:"WhatsApp",pos
 function toggleTarefa(id){ const t=DB.tarefas.find(x=>x.id===id); if(!t)return; t.feito=!t.feito; salvar({tarefas:[t]}); render(); }
 function concluirTarefa(id){ const t=DB.tarefas.find(x=>x.id===id); if(!t)return; t.feito=true; salvar({tarefas:[t]});
   sairLinha(event, ()=>{ render(); toast("Tarefa concluída."); }); }
+
+/* ---------------- FOLLOW-UP (tela) ---------------- */
+function fuIcone(g,tam){
+  const p=FU_ICONES[g]||FU_ICONES.orcamento, s=tam||17;
+  return `<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="${p}"/></svg>`;
+}
+function fuQuando(e){
+  if(e.regra.gatilho==="aniversario") return e.atraso===0 ? "aniversário hoje" : "aniversário há "+plural(e.atraso,"dia","dias");
+  return e.atraso===0 ? "na data hoje" : "na data desde "+e.due.toLocaleDateString("pt-BR");
+}
+// Botão de envio: abre o WhatsApp com o texto pronto e registra o envio no mesmo toque.
+function fuBotaoEnviar(e, rotulo){
+  if(!onlyDigits(e.cliente.telefone)) return `<span class="chip warn">sem telefone</span>`;
+  return `<a class="btn wa sm" target="_blank" rel="noopener" href="${waLink(e.cliente.telefone,fuTexto(e))}"
+    onclick="return fuEnviarRapido(event,'${e.id}')">${rotulo||"WhatsApp"}</a>`;
+}
+
+function renderFollowup(app){
+  const aba=state.fuAba||"hoje";
+  const p=fuPendentes();
+  const hj=hojeISO();
+  const enviadosHoje=fuLista().filter(f=>f.feitoEm===hj && f.status==="enviado").length;
+  setHeader("Follow-up",
+    `${p.hoje.length} para hoje · ${p.seguros.length} aguardando intervalo · ${enviadosHoje} ${enviadosHoje===1?"enviado":"enviados"} hoje`,
+    aba==="hoje" && p.hoje.length
+      ? `<button class="btn primary" onclick="fuSequencia()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>Enviar em sequência</button>`
+      : "");
+  const tabs=`<div class="toolbar"><div class="seg">
+    ${[["hoje","Hoje"],["regua","Régua"],["resultados","Resultados"]].map(([k,n])=>
+      `<button class="${aba===k?'on':''}" onclick="state.fuAba='${k}';render()">${n}</button>`).join("")}
+  </div></div>`;
+  let corpo="";
+  if(aba==="hoje") corpo=fuTelaHoje(p);
+  else if(aba==="regua") corpo=fuTelaRegua();
+  else corpo=fuTelaResultados();
+  app.innerHTML=tabs+corpo;
+}
+
+function fuTelaHoje(p){
+  const linha=(e)=>{
+    const c=e.cliente;
+    return `<div class="fu-item">
+      <div class="who" style="min-width:0">
+        <div class="avatar">${escFila(initials(c.nome))}</div>
+        <div style="min-width:0">
+          <div class="strong row-click" onclick="abrirCliente('${c.id}')">${escFila(c.nome)}</div>
+          <div class="fu-meta"><span class="chip accent">${escFila(e.regra.nome)}</span><span class="muted">${fuQuando(e)}</span></div>
+        </div>
+      </div>
+      <div class="fu-msg">${escFila(fuTexto(e))}</div>
+      <div class="fu-acoes">
+        ${fuBotaoEnviar(e)}
+        <button class="btn sm" onclick="fuRevisar('${e.id}')">Revisar</button>
+        <button class="btn sm ghost" onclick="fuPular('${e.id}')">Pular</button>
+      </div>
+    </div>`;
+  };
+  const hj=hojeISO();
+  const feitosHoje=fuLista().filter(f=>f.feitoEm===hj).sort((a,b)=>a.status<b.status?-1:1);
+
+  return `
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-h"><h3>Para enviar hoje</h3><span class="count">${p.hoje.length}</span></div>
+    <div class="fila-legenda">A régua decide quem recebe o quê e quando. O envio sai do WhatsApp deste aparelho, com um toque por mensagem;
+      o Íris registra quem enviou e não repete a etapa, nem em outro aparelho. <b>Pular</b> tira da fila sem mandar.</div>
+    ${p.hoje.length ? p.hoje.map(linha).join("") : emptyBox("Nenhuma mensagem da régua para hoje.")}
+  </div>
+
+  ${p.seguros.length?`<div class="card" style="margin-bottom:16px">
+    <div class="card-h"><h3>Aguardando intervalo</h3><span class="count">${p.seguros.length}</span></div>
+    <div class="fila-legenda">Clientes que receberam mensagem há menos de ${plural(fuCfg().intervaloMin,"dia","dias")}.
+      Voltam para a fila sozinhos quando o intervalo passa.</div>
+    <table><tbody>${p.seguros.map(e=>`<tr>
+      <td><div class="strong row-click" onclick="abrirCliente('${e.cliente.id}')">${escFila(e.cliente.nome)}</div>
+        <div class="muted" style="font-size:12px">${escFila(e.regra.nome)}</div></td>
+      <td style="text-align:right"><span class="chip neutral">libera em ${e.libera.toLocaleDateString("pt-BR")}</span></td>
+      <td style="text-align:right;width:70px"><button class="btn sm ghost" onclick="fuRevisar('${e.id}')">Enviar já</button></td>
+    </tr>`).join("")}</tbody></table></div>`:""}
+
+  ${feitosHoje.length?`<div class="card">
+    <div class="card-h"><h3>Registrados hoje</h3><span class="count">${feitosHoje.length}</span></div>
+    <table><tbody>${feitosHoje.map(f=>{ const c=cliente(f.clienteId);
+      return `<tr>
+        <td><div class="strong">${escFila(c?c.nome:"—")}</div><div class="muted" style="font-size:12px">${escFila(fuNomeRegra(f.regra))}${f.por?" · por "+escFila(f.por):""}</div></td>
+        <td style="text-align:right"><span class="chip ${f.status==="enviado"?"ok":"neutral"}">${f.status==="enviado"?"Enviado":"Pulado"}</span></td>
+        <td style="text-align:right;width:80px">${podeAdmin()?`<button class="btn sm ghost" onclick="fuDesfazer('${escFila(f.id)}')">Desfazer</button>`:""}</td>
+      </tr>`; }).join("")}</tbody></table></div>`:""}`;
+}
+
+function fuTelaRegua(){
+  const cfg=fuCfg(), adm=podeAdmin();
+  const itens=cfg.regras.map(r=>`
+    <div class="regua-item${r.ativo?"":" off"}">
+      <label class="regua-tg" title="${r.ativo?"Ativa":"Desligada"}">
+        <input type="checkbox" ${r.ativo?"checked":""} ${adm?"":"disabled"} onchange="fuAlternar('${r.id}',this.checked)">
+      </label>
+      <div class="regua-ic">${fuIcone(r.gatilho)}</div>
+      <div style="min-width:0">
+        <div class="regua-quando">${escFila(fuDescPrazo(r))}</div>
+        <div class="strong">${escFila(r.nome)}</div>
+        <div class="regua-txt">${escFila(r.texto)}</div>
+      </div>
+      <div>${adm?`<button class="btn sm" onclick="fuModalRegra('${r.id}')">Editar</button>`
+              :`<button class="btn sm ghost" onclick="fuModalRegra('${r.id}')">Ver</button>`}</div>
+    </div>`).join("");
+  return `
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-h"><h3>Etapas da régua</h3><span class="count">${cfg.regras.filter(r=>r.ativo).length} ativas</span>
+      ${adm?`<button class="btn sm" style="margin-left:auto" onclick="fuModalRegra()">+ Nova etapa</button>`:""}</div>
+    ${adm?"":`<div class="fila-legenda">Só o administrador altera a régua.</div>`}
+    ${itens || emptyBox("Nenhuma etapa configurada.")}
+  </div>
+  <div class="card"><div class="card-h"><h3>Regras gerais</h3></div><div class="modal-b">
+    <div class="frow">
+      <div class="field"><label>Intervalo mínimo entre mensagens ao mesmo cliente (dias)</label>
+        <input id="fuIntervalo" type="number" min="0" max="60" value="${cfg.intervaloMin}" ${adm?"":"disabled"}></div>
+      <div class="field" style="display:flex;align-items:flex-end;gap:8px">
+        ${adm?`<button class="btn primary" onclick="fuSalvarIntervalo()">Salvar</button>
+        <button class="btn" onclick="fuRestaurarPadrao()">Restaurar régua padrão</button>`:""}</div>
+    </div>
+    <p class="muted" style="font-size:12.5px;margin:0">Aniversário não respeita o intervalo: a data é a data.
+      Cliente marcado como <b>não quer receber mensagens</b> (na ficha) sai da régua inteira.
+      Cada etapa só aparece por alguns dias depois da data dela; passado esse prazo, a mensagem perderia o sentido e sai da fila sozinha.</p>
+  </div></div>`;
+}
+
+function fuTelaResultados(){
+  const R=fuResultados(), regras=fuCfg().regras;
+  const ids=[...new Set([...regras.map(r=>r.id), ...R.porRegra.keys()])];
+  let tEnv=0,tPul=0;
+  const linhas=ids.map(id=>{
+    const m=R.porRegra.get(id)||{enviados:0,pulados:0,voltaram:0,valor:0};
+    tEnv+=m.enviados; tPul+=m.pulados;
+    const taxa=m.enviados? m.voltaram/m.enviados*100 : 0;
+    return `<tr>
+      <td class="strong">${escFila(fuNomeRegra(id))}</td>
+      <td class="num" style="text-align:right">${m.enviados}</td>
+      <td class="num" style="text-align:right">${m.pulados}</td>
+      <td class="num" style="text-align:right">${m.voltaram}</td>
+      <td style="width:150px"><div style="display:flex;align-items:center;gap:8px">
+        <div class="bar" style="flex:1"><i style="width:${Math.min(100,taxa)}%;background:var(--accent)"></i></div>
+        <span class="num" style="font-size:12px;width:34px;text-align:right">${m.enviados?taxa.toFixed(0)+"%":"—"}</span></div></td>
+      <td class="num strong" style="text-align:right">${m.valor?brl(m.valor):"—"}</td>
+    </tr>`;
+  }).join("");
+  return `
+  <div class="grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px" id="fuKpis">
+    ${kpi("Enviadas 90d", tEnv, `<span class="muted" style="font-size:12px">${tPul} puladas</span>`)}
+    ${kpi("Voltaram e compraram", R.vendas, `<span class="muted" style="font-size:12px">em até 30 dias</span>`)}
+    ${kpi("Vendas depois da mensagem", brlShort(R.valor), `<span class="muted" style="font-size:12px">sem contar em dobro</span>`)}
+    ${kpi("Para hoje", fuPendentes().hoje.length, `<span class="muted" style="font-size:12px">na fila agora</span>`)}
+  </div>
+  <div class="card"><div class="card-h"><h3>Por etapa</h3><span class="count">últimos 90 dias</span></div>
+    <div class="fila-legenda">“Voltou e comprou” conta venda fechada pelo mesmo cliente em até 30 dias depois da mensagem.
+      Mostra coincidência no tempo, não prova que a mensagem causou a compra: parte desses clientes voltaria de qualquer jeito.</div>
+    <div style="overflow-x:auto"><table>
+      <thead><tr><th>Etapa</th><th style="text-align:right">Enviadas</th><th style="text-align:right">Puladas</th>
+        <th style="text-align:right">Voltaram</th><th>Taxa</th><th style="text-align:right">Valor</th></tr></thead>
+      <tbody>${linhas}</tbody></table></div></div>`;
+}
+
+/* ---- Ações ---- */
+function fuEnviarRapido(ev,id){
+  const e=fuAchar(id);
+  if(!e){ ev.preventDefault(); toast("Esse follow-up já foi registrado."); render(); return false; }
+  fuRegistrar(e,"enviado",fuTexto(e));
+  // O render espera o clique terminar: trocar o DOM no meio do clique
+  // pode engolir a abertura do WhatsApp em alguns navegadores.
+  setTimeout(()=>{ render(); toast("Registrado: "+e.regra.nome.toLowerCase()+" para "+primeiroNome(e.cliente.nome)+"."); },60);
+  return true;
+}
+function fuPular(id){
+  const e=fuAchar(id); if(!e){ render(); return; }
+  fuRegistrar(e,"pulado","");
+  render(); toast("Etapa pulada para "+primeiroNome(e.cliente.nome)+".");
+}
+function fuDesfazer(fid){
+  if(!podeAdmin()){ toast("Só o administrador desfaz registros."); return; }
+  DB.followups=fuLista().filter(f=>f.id!==fid);
+  salvar({_remover:{followups:[fid]}}); render(); toast("Registro desfeito — a etapa volta para a fila.");
+}
+
+/* Revisar: editar o texto antes de mandar. Em sequência, o próximo
+   cliente abre sozinho depois de cada envio — é o mais perto de
+   automático que dá para chegar sem a API paga do WhatsApp. */
+let fuSeq=false;
+function fuSequencia(){ fuSeq=true; fuProximoDaSequencia(); }
+function fuProximoDaSequencia(){
+  const lista=fuPendentes().hoje.filter(e=>onlyDigits(e.cliente.telefone));
+  if(!lista.length){ fuSeq=false; closeModal(); render(); toast("Fila de follow-up zerada."); return; }
+  fuRevisar(lista[0].id, lista.length);
+}
+function fuRevisar(id, restantes){
+  const e=fuAchar(id); if(!e){ toast("Esse follow-up já foi registrado."); render(); return; }
+  if(!restantes) fuSeq=false;
+  const c=e.cliente, txt=fuTexto(e), tel=!!onlyDigits(c.telefone);
+  openModal(`<div class="modal"><div class="modal-h"><h3>${fuSeq?"Sequência — ":""}${escFila(c.nome)}</h3>
+      ${fuSeq?`<span class="chip neutral" style="margin-left:8px">${plural(restantes,"restante","restantes")}</span>`:""}
+      <button class="close-x" onclick="fuSeq=false;closeModal();render()">×</button></div>
+    <div class="modal-b">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+        <span class="chip accent">${escFila(e.regra.nome)}</span><span class="muted" style="font-size:12.5px">${fuQuando(e)}</span>
+        ${e.libera?`<span class="chip warn">recebeu mensagem há pouco — libera em ${e.libera.toLocaleDateString("pt-BR")}</span>`:""}
+      </div>
+      <div class="field"><label>Mensagem</label>
+        <textarea id="fuMsg" rows="6" oninput="fuAtualizaLink()">${escFila(txt)}</textarea></div>
+      <p class="muted" style="font-size:12px;margin:0">${tel?"Editar aqui muda só esta mensagem. O modelo da etapa fica como está.":"Cliente sem telefone cadastrado: dá para pular ou abrir a ficha e completar."}</p>
+    </div>
+    <div class="modal-f">
+      <button class="btn" style="margin-right:auto" onclick="fuSeq=false;closeModal();abrirCliente('${c.id}')">Ficha</button>
+      <button class="btn" onclick="fuPularRevisado('${e.id}')">Pular</button>
+      ${tel?`<a class="btn primary" id="fuWa" target="_blank" rel="noopener" data-tel="${escFila(c.telefone)}"
+          href="${waLink(c.telefone,txt)}" onclick="return fuEnviarRevisado(event,'${e.id}')">${fuSeq?"Enviar e próximo":"Abrir no WhatsApp"}</a>`:""}
+    </div></div>`);
+}
+function fuAtualizaLink(){
+  const a=$("#fuWa"), t=$("#fuMsg"); if(!a||!t) return;
+  a.href=waLink(a.dataset.tel, t.value);
+}
+function fuEnviarRevisado(ev,id){
+  const e=fuAchar(id);
+  if(!e){ ev.preventDefault(); toast("Esse follow-up já foi registrado."); closeModal(); render(); return false; }
+  const txt=($("#fuMsg")||{}).value||fuTexto(e);
+  fuRegistrar(e,"enviado",txt);
+  setTimeout(()=>{ if(fuSeq) fuProximoDaSequencia(); else { closeModal(); render(); toast("Registrado como enviado."); } },60);
+  return true;
+}
+function fuPularRevisado(id){
+  const e=fuAchar(id); if(e) fuRegistrar(e,"pulado","");
+  if(fuSeq) fuProximoDaSequencia(); else { closeModal(); render(); toast("Etapa pulada."); }
+}
+
+/* ---- Edição da régua (admin) ---- */
+function fuGravarRegras(regras, intervaloMin){
+  const atual=fuCfg();
+  DB.config.followup={ regras, intervaloMin: intervaloMin!=null ? intervaloMin : atual.intervaloMin };
+  salvar({config:DB.config});
+}
+function fuAlternar(id, ligado){
+  if(!podeAdmin()) return;
+  const regras=fuCfg().regras.map(r=>r.id===id?{...r,ativo:!!ligado}:r);
+  fuGravarRegras(regras); render(); toast(ligado?"Etapa ligada.":"Etapa desligada.");
+}
+function fuSalvarIntervalo(){
+  if(!podeAdmin()) return;
+  const v=Math.max(0,Math.min(60,+$("#fuIntervalo").value||0));
+  fuGravarRegras(fuCfg().regras, v); render(); toast("Intervalo mínimo: "+plural(v,"dia","dias")+".");
+}
+function fuRestaurarPadrao(){
+  if(!podeAdmin()) return;
+  if(!confirm("Voltar a régua para as 6 etapas padrão? Etapas criadas ou textos editados serão substituídos.\n\nO histórico de envios não é apagado.")) return;
+  fuGravarRegras(fuRegrasPadrao()); render(); toast("Régua padrão restaurada.");
+}
+function fuModalRegra(id){
+  const adm=podeAdmin();
+  const r=id? fuRegra(id) : { id:"", nome:"", gatilho:"venda", prazo:7, ativo:true, texto:"Oi, {nome}! " };
+  if(!r) return;
+  const dis=adm?"":"disabled";
+  openModal(`<div class="modal wide"><div class="modal-h"><h3>${id?(adm?"Editar etapa":"Etapa"):"Nova etapa"}</h3>
+      <button class="close-x" onclick="closeModal()">×</button></div>
+    <div class="modal-b">
+      <div class="frow">
+        <div class="field"><label>Nome da etapa</label><input id="rgNome" value="${escFila(r.nome)}" placeholder="Ex.: Revisão de 6 meses" ${dis}></div>
+        <div class="field"><label>Quando</label><select id="rgGat" onchange="fuRegraGatilho()" ${dis}>
+          ${Object.entries(FU_GATILHOS).map(([k,g])=>`<option value="${k}" ${r.gatilho===k?"selected":""}>${g.nome}</option>`).join("")}</select></div>
+      </div>
+      <div class="frow">
+        <div class="field" id="rgPrazoBox"><label id="rgPrazoLbl">Prazo</label>
+          <input id="rgPrazo" type="number" min="0" value="${Number(r.prazo)||0}" oninput="fuRegraPreview()" ${dis}></div>
+        <div class="field" style="display:flex;align-items:flex-end">
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin:0 0 9px">
+            <input type="checkbox" id="rgAtivo" ${r.ativo?"checked":""} ${dis} style="width:auto"> Etapa ativa</label></div>
+      </div>
+      <p class="muted" id="rgAjuda" style="font-size:12.5px;margin:-4px 0 12px"></p>
+      <div class="field"><label>Texto da mensagem</label>
+        <textarea id="rgTexto" rows="5" oninput="fuRegraPreview()" onblur="this.dataset.pos=this.selectionEnd" ${dis}>${escFila(r.texto)}</textarea></div>
+      ${adm?`<div class="vars">${FU_VARS.map(([k,dsc])=>`<button type="button" title="${dsc}" onclick="fuInserirVar('${k}')">{${k}}</button>`).join("")}</div>`:""}
+      <div class="field" style="margin-top:14px"><label>Como chega para o cliente <span class="muted" id="rgPrevQuem" style="font-weight:500"></span></label>
+        <div class="fu-prev" id="rgPrev"></div></div>
+    </div>
+    <div class="modal-f">
+      ${adm&&id?`<button class="btn" style="margin-right:auto;color:var(--alert)" onclick="fuExcluirRegra('${id}')">Excluir etapa</button>`:""}
+      <button class="btn" onclick="closeModal()">${adm?"Cancelar":"Fechar"}</button>
+      ${adm?`<button class="btn primary" onclick="fuSalvarRegra('${id||""}')">Salvar</button>`:""}
+    </div></div>`);
+  fuRegraGatilho();
+}
+function fuRegraGatilho(){
+  const g=FU_GATILHOS[$("#rgGat").value]; if(!g) return;
+  $("#rgPrazoBox").style.display = g.unidade ? "" : "none";
+  $("#rgPrazoLbl").textContent = g.unidade ? "Prazo ("+g.unidade+")" : "Prazo";
+  $("#rgAjuda").textContent = g.ajuda;
+  fuRegraPreview();
+}
+function fuInserirVar(k){
+  const t=$("#rgTexto"); if(!t) return;
+  // Clicar no botão tira o foco do texto; a posição guardada no blur diz onde
+  // o cursor estava. Se a pessoa nunca clicou no texto, a variável vai para o fim.
+  const pos=t.dataset.pos!=null ? +t.dataset.pos : t.value.length;
+  const ini=pos, fim=pos, ins="{"+k+"}";
+  t.value=t.value.slice(0,ini)+ins+t.value.slice(fim);
+  t.focus(); t.selectionStart=t.selectionEnd=ini+ins.length; t.dataset.pos=ini+ins.length;
+  fuRegraPreview();
+}
+// Prévia com um cliente de verdade da base, para a pessoa ver o texto como ele sai.
+function fuRegraPreview(){
+  const box=$("#rgPrev"); if(!box) return;
+  const regra={ id:"_prev", nome:"", gatilho:$("#rgGat").value, prazo:+$("#rgPrazo").value||0, ativo:true, texto:$("#rgTexto").value };
+  const c=DB.clientes.find(x=>onlyDigits(x.telefone)) || {id:"_", nome:"Maria Exemplo", telefone:""};
+  const n=DB.negocios.filter(x=>x.clienteId===c.id && x.etapa==="ganho").sort((a,b)=>(a.fechadoEm||"")<(b.fechadoEm||"")?1:-1)[0];
+  box.textContent=fuTexto({regra, cliente:c, ctx:{negocio:n||null}});
+  const q=$("#rgPrevQuem"); if(q) q.textContent="· exemplo com "+primeiroNome(c.nome);
+}
+function fuSalvarRegra(id){
+  if(!podeAdmin()) return;
+  const nome=$("#rgNome").value.trim(), texto=$("#rgTexto").value.trim();
+  if(!nome){ toast("Dê um nome para a etapa."); return; }
+  if(!texto){ toast("Escreva o texto da mensagem."); return; }
+  const dados={ nome, gatilho:$("#rgGat").value, prazo:Math.max(0,+$("#rgPrazo").value||0), ativo:$("#rgAtivo").checked, texto };
+  let regras=fuCfg().regras.slice();
+  if(id){
+    // Mudar o gatilho de uma etapa existente muda o que a referência significa
+    // (negócio, receita, cliente). Ela vira etapa nova, com id novo, para o
+    // histórico antigo não bloquear nem liberar envio por engano.
+    const antiga=regras.find(r=>r.id===id);
+    if(antiga && antiga.gatilho!==dados.gatilho){
+      regras=regras.filter(r=>r.id!==id); regras.push({id:"r"+uid(),...dados});
+    } else regras=regras.map(r=>r.id===id?{...r,...dados}:r);
+  } else regras.push({id:"r"+uid(),...dados});
+  fuGravarRegras(regras); closeModal(); render(); toast("Etapa salva.");
+}
+function fuExcluirRegra(id){
+  if(!podeAdmin()) return;
+  if(!confirm("Excluir esta etapa? O histórico de envios dela continua guardado.")) return;
+  fuGravarRegras(fuCfg().regras.filter(r=>r.id!==id)); closeModal(); render(); toast("Etapa excluída.");
+}
+
+/* ---- Bloco na ficha do cliente ---- */
+function fuCardCliente(c){
+  const hist=fuLista().filter(f=>f.clienteId===c.id).sort((a,b)=>a.feitoEm<b.feitoEm?1:-1).slice(0,8);
+  const prox=fuProximos(c);
+  const pend=fuPendentes(); const agora=pend.hoje.concat(pend.seguros).filter(e=>e.cliente.id===c.id);
+  return `<div class="card"><div class="card-h"><h3>Follow-up</h3>
+      ${c.optout?`<span class="chip alert" style="margin-left:auto">Não quer receber mensagens</span>`
+               :`<span class="count">${plural(hist.length,"registro","registros")}</span>`}</div>
+    <div style="padding:12px 16px">
+      ${c.optout?`<p class="muted" style="font-size:12.5px;margin:0 0 10px">Fora da régua por pedido do cliente. Para mudar, edite o cadastro.</p>`:""}
+      ${agora.map(e=>`<div class="kv"><span class="k"><span class="chip ${e.libera?"neutral":"accent"}">${e.libera?"libera "+e.libera.toLocaleDateString("pt-BR"):"agora"}</span> ${escFila(e.regra.nome)}</span>
+          <span class="v"><button class="btn sm ${e.libera?"":"wa"}" onclick="fuRevisar('${e.id}')">${e.libera?"Enviar já":"Enviar"}</button></span></div>`).join("")}
+      ${prox.map(e=>`<div class="kv"><span class="k">${escFila(e.regra.nome)}</span><span class="v">${e.due.toLocaleDateString("pt-BR")}</span></div>`).join("")}
+      ${!c.optout && !agora.length && !prox.length?`<p class="muted" style="font-size:12.5px;margin:0 0 6px">Nenhuma etapa prevista para este cliente.</p>`:""}
+      ${hist.length?`<div class="timeline" style="margin-top:12px">${hist.map(f=>`<div class="ev">
+          <div class="d">${fmtDate(f.feitoEm)} · ${f.status==="enviado"?"enviado":"pulado"}${f.por?" por "+escFila(f.por):""}</div>
+          <div class="b">${escFila(fuNomeRegra(f.regra))}</div></div>`).join("")}</div>`:""}
+    </div></div>`;
+}
 
 /* ---------------- CONFIG ---------------- */
 function renderConfig(app){
@@ -1616,10 +2280,11 @@ function importJSON(e){
     try{ data=JSON.parse(r.result); }catch(err){ toast("Arquivo inválido."); return; }
     if(!data || !Array.isArray(data.clientes)){ toast("Arquivo inválido: não parece um backup do Íris."); return; }
     const conta=(k)=>Array.isArray(data[k])?data[k].length:0;
-    const total=["clientes","receitas","produtos","negocios","tarefas","os","parcelas"].reduce((s,k)=>s+conta(k),0);
+    const total=["clientes","receitas","produtos","negocios","tarefas","os","parcelas","followups"].reduce((s,k)=>s+conta(k),0);
     if(!confirm(`Enviar ${total} registros para o banco da loja?\n\n`+
       `${conta("clientes")} clientes · ${conta("receitas")} receitas · ${conta("produtos")} produtos\n`+
-      `${conta("negocios")} negócios · ${conta("tarefas")} tarefas · ${conta("os")} OS · ${conta("parcelas")} parcelas\n\n`+
+      `${conta("negocios")} negócios · ${conta("tarefas")} tarefas · ${conta("os")} OS · ${conta("parcelas")} parcelas`+
+      (conta("followups")?` · ${conta("followups")} registros de follow-up`:"")+`\n\n`+
       `Registros com o mesmo código serão sobrescritos. Nada é apagado.`)) return;
     importarParaOBanco(data, total);
   };
@@ -1635,7 +2300,8 @@ async function popularExemplo(){
 }
 
 async function importarParaOBanco(data, total){
-  const chaves=["clientes","receitas","produtos","negocios","tarefas","os","parcelas"];
+  // followups por último: cada registro aponta para um cliente que precisa já existir.
+  const chaves=["clientes","receitas","produtos","negocios","tarefas","os","parcelas","followups"];
   // Em lotes: um arquivo grande numa requisição só estoura o limite de
   // tamanho do corpo e o de instruções por transação do D1.
   const LOTE=150;
@@ -1661,7 +2327,7 @@ function openModal(html){ $("#modalRoot").innerHTML=`<div class="modal-bg" oncli
 function closeModal(){ $("#modalRoot").innerHTML=""; }
 
 function modalCliente(id){
-  const c=id?cliente(id):{nome:"",telefone:"",email:"",nascimento:"",tags:[],obs:""};
+  const c=id?cliente(id):{nome:"",telefone:"",email:"",nascimento:"",tags:[],obs:"",optout:false};
   openModal(`<div class="modal"><div class="modal-h"><h3>${id?'Editar cliente':'Novo cliente'}</h3><button class="close-x" onclick="closeModal()">×</button></div>
     <div class="modal-b">
       <div class="field"><label>Nome completo</label><input id="clNome" value="${c.nome}"></div>
@@ -1670,6 +2336,8 @@ function modalCliente(id){
       <div class="field"><label>E-mail</label><input id="clMail" value="${c.email||''}"></div>
       <div class="field"><label>Tags (separadas por vírgula)</label><input id="clTags" value="${c.tags.join(', ')}" placeholder="VIP, Multifocal"></div>
       <div class="field"><label>Observações</label><textarea id="clObs" rows="2">${c.obs||''}</textarea></div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600">
+        <input type="checkbox" id="clOptout" ${c.optout?'checked':''} style="width:auto"> Não quer receber mensagens da régua de follow-up</label>
     </div>
     <div class="modal-f">${id?`<button class="btn" style="margin-right:auto;color:var(--alert)" onclick="excluirCliente('${id}')">Excluir</button>`:''}
       <button class="btn" onclick="closeModal()">Cancelar</button>
@@ -1678,7 +2346,8 @@ function modalCliente(id){
 function salvarCliente(id){
   const nome=$("#clNome").value.trim(); if(!nome){ toast("Informe o nome."); return; }
   const dados={nome,telefone:$("#clTel").value.trim(),email:$("#clMail").value.trim(),nascimento:$("#clNasc").value,
-    tags:$("#clTags").value.split(",").map(s=>s.trim()).filter(Boolean),obs:$("#clObs").value.trim()};
+    tags:$("#clTags").value.split(",").map(s=>s.trim()).filter(Boolean),obs:$("#clObs").value.trim(),
+    optout:$("#clOptout").checked};
   let reg;
   if(id){ reg=cliente(id); Object.assign(reg,dados); }
   else { reg={id:uid(),criadoEm:new Date().toISOString().slice(0,10),...dados}; DB.clientes.push(reg); }

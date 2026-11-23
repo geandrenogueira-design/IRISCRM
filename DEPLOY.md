@@ -36,11 +36,11 @@ Você cai na página do banco. Abra a aba **Console**.
 
 Deve aparecer algo como *Rows written: 1* e nenhum erro em vermelho.
 
-Confira na aba **Tables**: têm de existir 13 tabelas — `auditoria`, `clientes`,
-`config`, `negocio_itens`, `negocios`, `os`, `parcelas`, `produtos`, `receitas`,
-`sessoes`, `tarefas`, `tentativas`, `usuarios`.
+Confira na aba **Tables**: têm de existir 14 tabelas — `auditoria`, `clientes`,
+`config`, `followups`, `negocio_itens`, `negocios`, `os`, `parcelas`, `produtos`,
+`receitas`, `sessoes`, `tarefas`, `tentativas`, `usuarios`.
 
-> Se aparecerem menos de 13, algo do SQL ficou para trás na hora de copiar.
+> Se aparecerem menos de 14, algo do SQL ficou para trás na hora de copiar.
 > Apague o banco, crie de novo e repita colando o arquivo inteiro.
 
 ## Passo 3 — Subir os arquivos para o GitHub
@@ -133,6 +133,9 @@ popular com dados de exemplo. Ele some assim que houver registro de verdade.
 |------------------------------|:-----:|:--------:|
 | Funil, clientes, receitas    |  sim  |   sim    |
 | Oficina, recompra, agenda    |  sim  |   sim    |
+| Enviar e pular follow-up     |  sim  |   sim    |
+| Editar a régua de follow-up  |  sim  |   não    |
+| Desfazer registro de follow-up | sim |   não    |
 | Fechar venda (gera parcela e baixa estoque) | sim | sim |
 | Ver o Financeiro             |  sim  |   não    |
 | Dar baixa em parcela         |  sim  |   não    |
@@ -146,6 +149,38 @@ o dado não chega ao navegador dele.
 
 Ele fecha venda normalmente: a parcela que a venda gera é aceita, e o estoque
 desce. O que ele não pode é alterar parcela existente nem mexer no catálogo.
+
+---
+
+## Follow-up
+
+A tela **Follow-up** monta sozinha, todo dia, a lista de quem deve receber
+mensagem, com o texto pronto. A régua padrão tem 6 etapas:
+
+| Etapa | Quando |
+|---|---|
+| Agradecimento | 1 dia após a venda |
+| Limpeza e ajuste | 30 dias após a entrega do óculos (OS entregue) |
+| Lembrete de novo exame | 30 dias antes de a receita vencer |
+| Retomar orçamento | 3 dias com orçamento sem resposta |
+| Cliente inativo | 12 meses sem comprar, sem negócio aberto |
+| Aniversário | no dia |
+
+O admin muda prazos, textos, liga e desliga etapas e cria novas na aba
+**Régua**. O envio sai do WhatsApp do aparelho, com um toque por mensagem
+(ou em sequência, um cliente atrás do outro), e fica registrado no banco:
+a mesma etapa nunca sai duas vezes, nem por dois vendedores.
+
+Travas contra mensagem fora de hora:
+
+- **Janela** — cada etapa só fica na fila por alguns dias depois da data dela.
+- **Intervalo mínimo** — cliente que recebeu mensagem há menos de 7 dias
+  (ajustável) espera. Aniversário não espera.
+- **Não quer receber** — marcado no cadastro do cliente, tira ele da régua.
+
+**Banco de quem já usava o Íris:** não precisa rodar nada. Na primeira
+requisição, a API cria a tabela `followups` e a coluna `clientes.optout`
+sozinha. Quem preferir fazer à mão encontra os comandos no `schema.sql`.
 
 ---
 
@@ -201,3 +236,8 @@ Para você saber onde está a dívida, em vez de descobrir depois:
   uma some quando é usada, mas as abandonadas ficam na tabela.
 - **Sem recuperação de senha por e-mail.** Senha esquecida se resolve pelo
   Console do D1, como está acima.
+- **Follow-up não envia sem toque humano.** O link do WhatsApp abre a conversa
+  com o texto pronto, mas alguém precisa apertar enviar. Mandar sozinho, de
+  madrugada, exige a API oficial do WhatsApp Business (conta Meta verificada,
+  número dedicado, modelos de mensagem aprovados e cobrança por mensagem) e um
+  Worker com agendamento.
