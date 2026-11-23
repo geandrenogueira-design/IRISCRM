@@ -89,6 +89,7 @@ CREATE TABLE IF NOT EXISTS clientes (
   nascimento  TEXT,                          -- AAAA-MM-DD
   tags        TEXT NOT NULL DEFAULT '[]',    -- JSON array
   obs         TEXT NOT NULL DEFAULT '',
+  optout      INTEGER NOT NULL DEFAULT 0,    -- 1 = pediu para não receber mensagens (LGPD)
   criado_em   TEXT NOT NULL,
   atualizado_em TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -211,6 +212,33 @@ CREATE TABLE IF NOT EXISTS parcelas (
 );
 CREATE INDEX IF NOT EXISTS ix_parcelas_abertas ON parcelas(pago_em, vence_em);
 CREATE INDEX IF NOT EXISTS ix_parcelas_cliente ON parcelas(cliente_id);
+
+-- ------------------------------------------------------------
+-- Follow-up — registro de cada mensagem da régua
+--
+--  * O id é a própria chave de deduplicação: regra + referência
+--    (ex.: 'agradecimento:<negocio>', 'exame:<receita>'). Dois
+--    aparelhos marcando o mesmo envio batem no mesmo id e não
+--    duplicam; a régua nunca manda a mesma etapa duas vezes.
+--  * status: 'enviado' (abriu o WhatsApp com a mensagem) ou
+--    'pulado' (alguém decidiu não mandar). Os dois tiram da fila.
+--  * mensagem guarda o texto como saiu, não o modelo: o modelo
+--    muda com o tempo, o histórico não pode mudar junto.
+--  * A API cria esta tabela sozinha se ela não existir, para quem
+--    já tinha o banco antes do follow-up. Ver garantirEsquema().
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS followups (
+  id          TEXT PRIMARY KEY,
+  cliente_id  TEXT NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
+  regra       TEXT NOT NULL,
+  ref         TEXT NOT NULL DEFAULT '',
+  status      TEXT NOT NULL CHECK (status IN ('enviado','pulado')),
+  mensagem    TEXT NOT NULL DEFAULT '',
+  feito_em    TEXT NOT NULL,                 -- AAAA-MM-DD
+  usuario_id  TEXT REFERENCES usuarios(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS ix_followups_cliente ON followups(cliente_id, feito_em);
+CREATE INDEX IF NOT EXISTS ix_followups_em      ON followups(feito_em);
 
 -- ------------------------------------------------------------
 -- Config nasce com os padrões do arquivo único, para o app
