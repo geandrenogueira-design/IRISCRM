@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Íris — CRM para Óticas</title>
+<title>Íris · CRM para óticas</title>
 <!--
   ÍRIS · CRM específico para óticas
-  Arquivo único, sem dependências externas. Persistência local (localStorage).
-  Pronto para deploy no Cloudflare Pages (basta subir este .html).
+  Arquivo único, sem dependências externas. Dados no D1 (Cloudflare), via functions/api/iris.js,
+  com cópia local para abrir sem internet. Deploy no Cloudflare Pages: ver DEPLOY.md.
   Diferencial central: motor de RECOMPRA por validade de receita — o que um CRM
   genérico (Pipedrive) não modela, porque não sabe que a receita do cliente vence.
 -->
@@ -182,6 +182,7 @@
   .topbar .sub{color:var(--ink-3);font-size:12.5px;margin-top:1px}
   .topbar .spacer{flex:1}
   .content{padding:22px 26px 60px;max-width:1280px;width:100%}
+  @media (min-width:701px){ .topbar{min-height:76px} }   /* mesma altura com ou sem subtítulo */
 
   /* ---------- Buttons / chips ---------- */
   .btn{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);background:var(--surface);
@@ -320,6 +321,57 @@
     .fila-acoes{grid-column:2;justify-content:flex-start}
   }
 
+  /* ---------- Datas, KPIs e gráfico do Painel ---------- */
+  .data{font-size:12.5px;color:var(--ink-2)}
+  .so-cel{display:none}
+  .kpis3{grid-template-columns:repeat(3,1fr)} .kpis4{grid-template-columns:repeat(4,1fr)}
+  .detail>*{min-width:0}
+  .barras{color:var(--ink-2)}
+  .barras-plot{position:relative;height:190px;display:grid;grid-template-columns:repeat(6,1fr);gap:10px;
+    border-bottom:1px solid var(--line)}
+  .barra{display:flex;flex-direction:column;justify-content:flex-end;min-width:0}
+  .barra b{font-size:12px;font-weight:700;text-align:center;margin:0 auto 3px;white-space:nowrap;position:relative;z-index:1;
+    background:var(--surface);padding:0 4px;border-radius:4px}
+  .barra i{display:block;background:currentColor;opacity:.3;border-radius:5px 5px 0 0}
+  .barra.atual i{background:var(--accent);opacity:1}
+  .barras-meta{position:absolute;left:0;right:0;border-top:1px dashed var(--alert);opacity:.75;pointer-events:none}
+  .barras-meta span{position:absolute;right:0;bottom:2px;font-size:11px;font-weight:700;color:var(--alert);
+    background:var(--surface);padding:0 0 0 4px;z-index:2}
+  .barras-mes{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-top:6px}
+  .barras-mes span{font-size:11.5px;font-weight:600;color:var(--ink-3);text-align:center}
+
+  /* ---------- Kanban: colunas fora da tela ---------- */
+  .board-wrap{position:relative}
+  .board-wrap:after{content:"";position:absolute;top:0;bottom:8px;right:0;width:56px;pointer-events:none;
+    background:linear-gradient(to left,var(--paper),transparent);opacity:0;transition:opacity var(--fast) var(--ease)}
+  .board-wrap.mais-dir:after{opacity:1}
+  .board-mais{position:absolute;right:8px;top:64px;z-index:2;border:1px solid var(--line);background:var(--surface);
+    color:var(--ink);font-size:12px;font-weight:700;padding:5px 10px;border-radius:20px;box-shadow:var(--e2);cursor:pointer;display:none}
+  .board-wrap.mais-dir .board-mais{display:block}
+
+  /* ---------- Celular ---------- */
+  @media (max-width:700px){
+    .content{padding:16px 14px 60px}
+    .topbar{flex-wrap:wrap;padding:10px 14px;gap:8px 10px}
+    .topbar .titulo{flex:1 1 0;min-width:0}
+    .topbar .spacer{display:none}
+    .topbar h1{font-size:17px}
+    #pageActions{order:10;flex:1 1 100%}
+    #pageActions:empty{display:none}
+    #pageActions .btn{padding:6px 10px;font-size:12.5px}
+    .kpis3,.kpis4{grid-template-columns:1fr 1fr}
+    table.resp thead{display:none}
+    table.resp tr{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;padding:11px 14px;border-bottom:1px solid var(--line-soft)}
+    table.resp tr:last-child{border-bottom:0}
+    table.resp td{display:block;padding:0;border:0}
+    table.resp td:first-child{flex:1 1 100%;min-width:0}
+    table.resp td:last-child{margin-left:auto}
+    table.resp .so-desk{display:none}
+    table.resp .so-cel{display:inline}
+    table.resp-check td:first-child{flex:0 0 auto}
+    table.resp-check td:nth-child(2){flex:1 1 calc(100% - 40px);min-width:0}
+  }
+
   /* ---------- Follow-up ---------- */
   .fu-item{display:grid;grid-template-columns:minmax(170px,230px) 1fr auto;gap:14px;padding:12px 16px;
     border-bottom:1px solid var(--line-soft);align-items:center}
@@ -336,7 +388,7 @@
   .regua-item.off{opacity:.5}
   .regua-tg input{width:16px;height:16px;accent-color:var(--accent);cursor:pointer}
   .regua-ic{width:36px;height:36px;border-radius:10px;background:var(--accent-wash);color:var(--accent-ink);display:grid;place-items:center}
-  .regua-quando{font-size:11.5px;font-weight:700;color:var(--accent-ink);text-transform:uppercase;letter-spacing:.03em}
+  .regua-quando{font-size:12px;font-weight:700;color:var(--accent-ink)}
   .regua-txt{font-size:12.5px;color:var(--ink-3);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .vars{display:flex;flex-wrap:wrap;gap:6px}
   .vars button{border:1px solid var(--line);background:var(--surface);color:var(--ink-2);font:600 11.5px var(--mono);
@@ -438,9 +490,6 @@
       <div><b id="brandName">Íris</b><small>CRM · Ótica</small></div>
     </div>
     <nav class="nav" id="nav"></nav>
-    <div class="side-foot">
-      Dados salvos neste dispositivo (LGPD-friendly).<br>Backup em <b>Config → Exportar</b>.
-    </div>
   </aside>
 
   <main class="main">
@@ -448,7 +497,7 @@
       <button class="btn ghost menu-btn" onclick="document.getElementById('side').classList.toggle('open')" aria-label="Menu">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
       </button>
-      <div>
+      <div class="titulo">
         <h1 id="pageTitle">Painel</h1>
         <div class="sub" id="pageSub"></div>
       </div>
@@ -489,7 +538,7 @@ const RX_TIPOS = ["Visão simples","Multifocal","Bifocal","Ocupacional","Só lon
 const OS_STATUS = [
   {id:"aguardando",nome:"Aguardando envio",   cor:"#6b7885"},
   {id:"lab",       nome:"No laboratório",     cor:"#8e6bd6"},
-  {id:"chegou",    nome:"Chegou — conferir",  cor:"#b3760a"},
+  {id:"chegou",    nome:"Chegou, conferir",   cor:"#b3760a"},
   {id:"pronto",    nome:"Pronto p/ retirada", cor:"#0d6e6b"},
   {id:"entregue",  nome:"Entregue",           cor:"#2d8a4e"},
 ];
@@ -631,7 +680,7 @@ async function carregarDados(){
   }catch(e){
     if(e.semSessao) return false;
     const c = lerCache();
-    if(c){ DB = c; semRede = true; toast("Sem conexão — mostrando a última cópia salva neste aparelho."); return true; }
+    if(c){ DB = c; semRede = true; toast("Sem conexão. Mostrando a última cópia salva neste aparelho."); return true; }
     throw e;
   }
 }
@@ -727,10 +776,10 @@ function seed(){
   // Pipeline aberto adicional, distribuído pelas etapas (kanban nasce com movimento real)
   const abertos=[
     ["novo","Interesse em óculos de sol",[[5,520]],2],
-    ["novo","Indicação — primeira consulta",[],1],
+    ["novo","Indicação, primeira consulta",[],1],
     ["exame","Exame agendado sexta",[],3],
     ["exame","Retorno para conferir grau",[[3,420]],5],
-    ["receita","Receita nova — escolher armação",[],2],
+    ["receita","Receita nova, escolher armação",[],2],
     ["escolha","Comparando acetato x metal",[[1,640],[3,420]],4],
     ["orcamento","Orçamento multifocal enviado",[[1,640],[2,1180]],7],
     ["orcamento","Aguardando resposta do filho",[[0,390],[4,890]],9],
@@ -784,7 +833,7 @@ function seed(){
   parcelas.filter(p=>p.forma==="Crediário"&&p.pagoEm).slice(-2).forEach(p=>p.pagoEm=null);
 
   const db = {
-    config:{ nome:"Íris — Sua Ótica", metaMes:7500, cicloRecompraMeses:18, validadePadrao:12, ddi:"55",
+    config:{ nome:"Sua ótica", metaMes:7500, cicloRecompraMeses:18, validadePadrao:12, ddi:"55",
              prazoLabDias:7, laboratorios:["Óptica Lab PE","Lab Nordeste"] },
     clientes, receitas, produtos, negocios, tarefas, os, parcelas
   };
@@ -810,6 +859,11 @@ function cliente(id){ return DB.clientes.find(c=>c.id===id); }
 function produto(id){ return DB.produtos.find(p=>p.id===id); }
 function stage(id){ return STAGES.find(s=>s.id===id); }
 
+// Data comum é texto; selo só quando ela já venceu. Selo em toda data
+// dava a uma data de dezembro o mesmo peso de uma parcela atrasada.
+function dataTxt(iso,vencida){
+  return vencida ? `<span class="chip alert">${fmtDate(iso)}</span>` : `<span class="num data">${fmtDate(iso)}</span>`;
+}
 function toast(msg){ const t=$("#toast"); t.textContent=msg; t.classList.add("show"); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove("show"),2200); }
 
 /* ---------- Lógica de recompra (o coração do sistema) ---------- */
@@ -841,7 +895,7 @@ function aniversariantes(dias){
   return DB.clientes.filter(c=>c.nascimento).map(c=>{
     const nb=d(c.nascimento); const prox=new Date(t.getFullYear(),nb.getMonth(),nb.getDate());
     if(prox<t) prox.setFullYear(t.getFullYear()+1);
-    return {c,dias:Math.round((prox-t)/86400000),idade:t.getFullYear()-nb.getFullYear()};
+    return {c,dias:Math.round((prox-t)/86400000),idade:prox.getFullYear()-nb.getFullYear()};
   }).filter(x=>x.dias<=dias).sort((a,b)=>a.dias-b.dias);
 }
 
@@ -905,7 +959,7 @@ function filaTrabalho(){
   recompraList().filter(x=>(x.info.status==="alert"||x.info.status==="warn") && !fuReceita.has(x.c.id)).forEach(x=>{
     const venc = x.info.status==="alert";
     itens.push({ peso:x.info.score, tom:venc?"alert":"warn", tipo:"Recompra", cliente:x.c,
-      fato:`${escFila(x.c.nome)} — ${escFila(x.info.motivo)}`,
+      fato:`${escFila(x.c.nome)}: ${escFila(x.info.motivo.toLowerCase())}`,
       sugestao: venc
         ? "Chamar para nova consulta: sem receita válida não há venda correta"
         : "Avisar agora, enquanto ainda dá tempo de agendar antes de vencer" });
@@ -924,7 +978,7 @@ function filaTrabalho(){
     const c=cliente(p.clienteId), atraso=diasEntre(t,d(p.venceEm));
     itens.push({ peso:75+atraso, tom:"alert", tipo:"Financeiro", cliente:c,
       fato:`Parcela ${p.n}/${p.total} de ${brl(p.valor)} vencida há ${plural(atraso,"dia","dias")}`,
-      sugestao:"Lembrete cordial primeiro — cobrança dura queima cliente que volta" });
+      sugestao:"Lembrete cordial primeiro: cobrança dura afasta o cliente que volta" });
   });
 
   // 5. Negócio parado no funil. 14 dias é o limiar; abaixo disso é negociação normal.
@@ -934,13 +988,13 @@ function filaTrabalho(){
     const c=cliente(n.clienteId), st=stage(n.etapa);
     itens.push({ peso:45+parado, tom:"neutral", tipo:"Funil", cliente:c,
       fato:`"${escFila(n.titulo)}" parado em ${escFila(st?st.nome:n.etapa)} há ${plural(parado,"dia","dias")}`,
-      sugestao:"Retomar ou marcar como perdido — funil parado falseia a previsão" });
+      sugestao:"Retomar ou marcar como perdido: funil parado distorce a previsão" });
   });
 
   // 6. Follow-up da régua: a mensagem já vem pronta, o botão envia e registra.
   fu.forEach(e=>{
     itens.push({ peso:e.peso, tom:"accent", tipo:"Follow-up", cliente:e.cliente, semWa:true,
-      fato:`${escFila(e.regra.nome)} — ${escFila(e.cliente.nome)} · ${escFila(fuDescPrazo(e.regra).toLowerCase())}`,
+      fato:`${escFila(e.regra.nome)}: ${escFila(e.cliente.nome)} · ${escFila(fuDescPrazo(e.regra).toLowerCase())}`,
       sugestao:"Mensagem pronta; revise se quiser personalizar",
       acao:`${fuBotaoEnviar(e,"Enviar")}<button class="btn sm" onclick="fuRevisar('${e.id}')">Revisar</button>` });
   });
@@ -1314,7 +1368,7 @@ function toggleVidro(){
   try{ localStorage.setItem(GKEY,v); }catch(e){}
   aplicarVidro(v);
   render();
-  toast(v==="on" ? "Vidro translúcido ligado." : "Vidro desligado — superfícies sólidas.");
+  toast(v==="on" ? "Vidro translúcido ligado." : "Vidro desligado.");
 }
 function initVidro(){ aplicarVidro(vidroEscolhido()); }
 
@@ -1379,7 +1433,7 @@ function renderPainel(app){
           <div class="muted" style="font-size:12px">${qm} vendas · ticket ${brlShort(ticket)}</div>
           <div class="muted" style="font-size:12px">${(vm/DB.config.metaMes*100).toFixed(0)}% da meta</div></div>
       </div>
-      <div class="chartwrap" style="color:var(--ink-2)">${barChart(serie,maxS)}</div>
+      <div class="chartwrap">${barChart(serie,maxS)}</div>
     </div>
 
     <div class="b5 b-kpis">
@@ -1435,7 +1489,7 @@ function renderPainel(app){
       <div class="card-h"><h3>Aniversariantes</h3><span class="count">próximos 30 dias</span></div>
       ${aniversariantes(30).length? `<table><tbody>${aniversariantes(30).slice(0,5).map(a=>`<tr class="row-click" onclick="abrirCliente('${a.c.id}')">
         <td><div class="who"><div class="avatar">${initials(a.c.nome)}</div><div class="strong">${a.c.nome}</div></div></td>
-        <td style="text-align:right"><span class="chip ${a.dias===0?'accent':'neutral'}">${a.dias===0?'Hoje 🎉':'em '+a.dias+' dias'}</span></td></tr>`).join("")}</tbody></table>`
+        <td style="text-align:right"><span class="chip ${a.dias===0?'accent':'neutral'}">${a.dias===0?'Hoje':'em '+plural(a.dias,'dia','dias')}</span></td></tr>`).join("")}</tbody></table>`
         : emptyBox("Nenhum aniversário no período.")}
     </div>
   </div>`;
@@ -1444,21 +1498,21 @@ function kpi(lbl,val,sub,link){
   const click = link? `onclick="go('${link}')" style="cursor:pointer"`:"";
   return `<div class="kpi" ${click}><div class="lbl">${lbl}</div><div class="val num">${val}</div>${sub||""}</div>`;
 }
+/* Barras em HTML, não SVG: o SVG escalava com a largura e chegava a 800 px
+   de altura no desktop, com rótulos de 24 px. Aqui a altura é fixa e o texto
+   tem o tamanho do resto da interface, em qualquer tela. */
 function barChart(serie,maxS){
   const meta=DB.config.metaMes||0;
-  const top=Math.max(maxS, meta*1.05, 1);           // escala inclui a meta: linha nunca "achatada" no topo
-  const W=100,gap=3,bw=(W-gap*(serie.length-1))/serie.length; const H=120;
-  const metaY = H - (meta/top)*H;
-  let bars=serie.map((s,i)=>{ const h=(s.total/top)*H; const x=i*(bw+gap);
-    const isCur=i===serie.length-1;
-    return `<rect x="${x}" y="${H-h}" width="${bw}" height="${Math.max(h,1)}" rx="1.5" fill="${isCur?'var(--accent)':'currentColor'}" ${isCur?'':'opacity=".35"'}/>`; }).join("");
-  let labels=serie.map((s,i)=>{ const x=i*(bw+gap)+bw/2;
-    return `<text x="${x}" y="${H+13}" font-size="4.4" text-anchor="middle" fill="currentColor" opacity=".65" font-weight="600">${s.label}</text>
-            <text x="${x}" y="${H-(s.total/top)*H-2.5}" font-size="4" text-anchor="middle" fill="currentColor" font-weight="700">${s.total?brlShort(s.total).replace('R$ ',''):''}</text>`;}).join("");
-  return `<svg viewBox="0 0 100 138" width="100%" style="overflow:visible">
-    <line x1="0" y1="${metaY}" x2="100" y2="${metaY}" stroke="#c0392b" stroke-width="0.4" stroke-dasharray="1.5 1.5" opacity="0.7"/>
-    <text x="100" y="${metaY-1.5}" font-size="3.6" text-anchor="end" fill="#c0392b" font-weight="700">meta ${brlShort(meta).replace('R$ ','')}</text>
-    ${bars}${labels}</svg>`;
+  const top=Math.max(maxS, meta, 1)*1.18;          // folga para o rótulo da barra mais alta
+  const curto=v=>brlShort(v).replace('R$ ','');
+  return `<div class="barras" role="img" aria-label="Faturamento dos últimos 6 meses">
+    <div class="barras-plot">
+      ${meta?`<div class="barras-meta" style="bottom:${meta/top*100}%"><span>meta ${curto(meta)}</span></div>`:''}
+      ${serie.map((s,i)=>`<div class="barra${i===serie.length-1?' atual':''}">
+        <b class="num">${s.total?curto(s.total):''}</b><i style="height:${Math.max(s.total/top*100,0.8)}%"></i></div>`).join("")}
+    </div>
+    <div class="barras-mes">${serie.map(s=>`<span>${s.label}</span>`).join("")}</div>
+  </div>`;
 }
 function funnelChart(){
   const open=STAGES.filter(s=>s.id!=="ganho");
@@ -1467,7 +1521,7 @@ function funnelChart(){
   return rows.map(r=>`<div class="funnel-row">
       <div class="lb"><span class="dot" style="background:${r.s.cor};display:inline-block;margin-right:6px"></span>${r.s.nome}</div>
       <div class="track"><i style="width:${r.n/maxN*100}%;background:${r.s.cor}"></i></div>
-      <div class="n num">${r.n} · ${brlShort(r.val).replace('R$ ','R$')}</div></div>`).join("");
+      <div class="n num">${r.n} · ${r.val>=1000?brlShort(r.val):"R$ "+Math.round(r.val)}</div></div>`).join("");
 }
 function recRow(x){
   const {c,info}=x; const cls=info.status==="alert"?"alert":"warn";
@@ -1481,13 +1535,13 @@ function recRow(x){
 }
 function renderMiniTarefas(){
   const ts=tarefasPendentes().sort((a,b)=>a.venceEm<b.venceEm?-1:1).slice(0,6);
-  if(!ts.length) return emptyBox("Sem tarefas pendentes. 🎯");
+  if(!ts.length) return emptyBox("Nenhuma tarefa pendente.");
   return `<table><tbody>${ts.map(t=>{
     const c=cliente(t.clienteId); const vencida=d(t.venceEm)<today();
     return `<tr>
       <td style="width:26px"><input type="checkbox" onchange="concluirTarefa('${t.id}')"></td>
       <td><div class="strong">${t.titulo}</div><div class="muted" style="font-size:12px">${c?c.nome:'—'} · ${tarefaTipoLabel(t.tipo)}</div></td>
-      <td style="text-align:right"><span class="chip ${vencida?'alert':'neutral'}">${fmtDate(t.venceEm)}</span></td>
+      <td style="text-align:right">${dataTxt(t.venceEm,vencida)}</td>
     </tr>`; }).join("")}</tbody></table>`;
 }
 
@@ -1498,7 +1552,7 @@ function renderFunil(app){
   const total=pipelineAberto().reduce((s,n)=>s+n.valor,0);
   setHeader("Funil de vendas", `${pipelineAberto().length} negócios abertos · ${brl(total)} em pipeline`,
     `<button class="btn primary" onclick="modalNegocio()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>Novo negócio</button>`);
-  app.innerHTML=`<div class="board" id="board">${STAGES.map(s=>{
+  app.innerHTML=`<div class="board-wrap"><div class="board" id="board">${STAGES.map(s=>{
     const ds=DB.negocios.filter(n=>n.etapa===s.id).sort((a,b)=>a.atualizadoEm<b.atualizadoEm?1:-1);
     const val=ds.reduce((a,n)=>a+n.valor,0);
     return `<div class="col${_colRecebeu===s.id?' received':''}" data-stage="${s.id}"
@@ -1508,7 +1562,8 @@ function renderFunil(app){
       <div class="col-h"><span class="stg" style="background:${s.cor}"></span><b>${s.nome}</b><span class="c num">${ds.length}</span>
         <span class="sum">${brl(val)}</span></div>
       <div class="col-body">${ds.map(dealCard).join("")||'<div class="muted" style="font-size:12px;padding:10px;text-align:center">—</div>'}</div>
-    </div>`; }).join("")}</div>`;
+    </div>`; }).join("")}</div><button class="board-mais" onclick="rolarBoard(this)"></button></div>`;
+  marcarBordas();
   _movido=null; _colRecebeu=null;   // sinalizadores valem para um render só
 }
 function dealCard(n){
@@ -1529,6 +1584,23 @@ function dealCard(n){
       </div>
     </div></div>`;
 }
+/* Coluna fora da tela precisa avisar que existe: sem isso, "Venda fechada"
+   e "Entregue" ficavam escondidas à direita sem nenhum sinal. */
+function marcarBordas(){
+  document.querySelectorAll('.board-wrap').forEach(w=>{
+    const b=w.querySelector('.board'), btn=w.querySelector('.board-mais');
+    const upd=()=>{
+      const dir=b.getBoundingClientRect().right;
+      const escondidas=[...b.querySelectorAll('.col')].filter(c=>c.getBoundingClientRect().left>dir-40).length;
+      w.classList.toggle('mais-dir', escondidas>0);
+      w.classList.toggle('mais-esq', b.scrollLeft>2);
+      btn.textContent = escondidas ? `Mais ${escondidas} →` : "";
+    };
+    b.addEventListener('scroll',upd,{passive:true}); upd();
+  });
+}
+function rolarBoard(btn){ const b=btn.parentElement.querySelector('.board'); b.scrollBy({left:b.clientWidth*0.8,behavior:reduzMovimento?'auto':'smooth'}); }
+window.addEventListener('resize',()=>{ if(document.querySelector('.board-wrap')) marcarBordas(); });
 function dropDeal(e,stg){
   e.preventDefault(); document.querySelectorAll('.col').forEach(c=>c.classList.remove('drop'));
   const n=DB.negocios.find(x=>x.id===dragId); if(!n||n.etapa===stg) return;
@@ -1571,7 +1643,7 @@ function renderClientes(app){
     <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
       <input placeholder="Buscar por nome ou telefone…" value="${state.buscaCli}" oninput="state.buscaCli=this.value;renderClientes(document.getElementById('app'))"></div>
   </div>
-  <div class="card"><table>
+  <div class="card"><table class="resp">
     <thead><tr><th>Cliente</th><th>Contato</th><th>Receita vigente</th><th>Última compra</th><th>Status</th><th></th></tr></thead>
     <tbody>${list.map(c=>{ const info=recompraInfo(c);
       const rxTxt=info.rx? `${info.rx.tipo} · ${fmtDate(info.rx.data)}` : '<span class="muted">—</span>';
@@ -1579,12 +1651,12 @@ function renderClientes(app){
       const st = info.status==="alert"?`<span class="chip alert">Recompra</span>`:info.status==="warn"?`<span class="chip warn">Atenção</span>`:info.status==="soon"?`<span class="chip neutral">Ciclo</span>`:`<span class="chip ok">Em dia</span>`;
       return `<tr class="row-click" onclick="abrirCliente('${c.id}')">
         <td><div class="who"><div class="avatar">${initials(c.nome)}</div><div><div class="strong">${c.nome}</div>
-          <div class="muted" style="font-size:12px">${c.tags.map(t=>'#'+t).join(' ')||'—'}</div></div></div></td>
-        <td>${c.telefone||'—'}</td>
-        <td>${rxTxt}${rxVenc}</td>
-        <td class="num">${fmtDate(info.ultima)}</td>
+          ${c.tags.length?`<div class="muted" style="font-size:12px">${c.tags.map(t=>'#'+t).join(' ')}</div>`:''}</div></div></td>
+        <td class="so-desk">${c.telefone||'—'}</td>
+        <td class="${info.rx?'':'so-desk'}">${rxTxt}${rxVenc}</td>
+        <td class="num so-desk">${fmtDate(info.ultima)}</td>
         <td>${st}</td>
-        <td style="text-align:right"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#6b7885" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg></td>
+        <td style="text-align:right" class="so-desk"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#6b7885" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg></td>
       </tr>`; }).join("") || `<tr><td colspan="6">${emptyBox('Nenhum cliente encontrado.')}</td></tr>`}</tbody>
   </table></div>`;
 }
@@ -1638,7 +1710,7 @@ function renderCliente360(app){
       <div class="card"><div class="card-h"><h3>Histórico</h3><span class="count">${compras.length} compras</span></div>
         <div style="padding:16px 18px">${
           compras.length?`<div class="timeline">${compras.map(n=>`<div class="ev"><div class="d">${fmtDate(n.fechadoEm)} · ${brl(n.valor)}</div>
-            <div class="b">${n.titulo} — ${n.itens.map(i=>{const p=produto(i.produtoId);return p?p.nome:'item'}).join(', ')||'—'}</div></div>`).join("")}</div>`
+            <div class="b">${n.titulo} · ${n.itens.map(i=>{const p=produto(i.produtoId);return p?p.nome:'item'}).join(', ')||'—'}</div></div>`).join("")}</div>`
           :emptyBox('Sem compras ainda.')}
         </div>
       </div>
@@ -1650,15 +1722,15 @@ function renderCliente360(app){
             <td style="text-align:right" class="muted">prev. ${fmtDate(o.previsaoEm)}</td></tr>`;}).join("")}</tbody></table></div>`:''}
       ${parcAbertas.length?`<div class="card"><div class="card-h"><h3>Parcelas em aberto</h3>
         <span class="count">${brl(parcAbertas.reduce((s,p)=>s+p.valor,0))}</span></div>
-        <table><tbody>${parcAbertas.sort((a,b)=>a.venceEm<b.venceEm?-1:1).map(p=>{const venc=d(p.venceEm)<today();
+        <table class="resp"><tbody>${parcAbertas.sort((a,b)=>a.venceEm<b.venceEm?-1:1).map(p=>{const venc=d(p.venceEm)<today();
           return `<tr><td><div class="strong">Parcela ${p.n}/${p.total}</div><div class="muted" style="font-size:12px">${p.forma}</div></td>
             <td class="num strong">${brl(p.valor)}</td>
-            <td style="text-align:right"><span class="chip ${venc?'alert':'neutral'}">${fmtDate(p.venceEm)}</span></td>
+            <td style="text-align:right">${dataTxt(p.venceEm,venc)}</td>
             <td style="text-align:right;width:80px"><button class="btn sm" onclick="receberParcela('${p.id}')">Receber</button></td></tr>`;}).join("")}</tbody></table></div>`:''}
       ${tarefas.length?`<div class="card"><div class="card-h"><h3>Tarefas</h3></div>
         <table><tbody>${tarefas.map(t=>`<tr><td style="width:26px"><input type="checkbox" onchange="concluirTarefa('${t.id}')"></td>
         <td><div class="strong">${t.titulo}</div><div class="muted" style="font-size:12px">${tarefaTipoLabel(t.tipo)}</div></td>
-        <td style="text-align:right"><span class="chip ${d(t.venceEm)<today()?'alert':'neutral'}">${fmtDate(t.venceEm)}</span></td></tr>`).join("")}</tbody></table></div>`:''}
+        <td style="text-align:right">${dataTxt(t.venceEm,d(t.venceEm)<today())}</td></tr>`).join("")}</tbody></table></div>`:''}
     </div>
   </div>`;
 }
@@ -1684,27 +1756,14 @@ function renderRecompra(app){
   setHeader("Motor de recompra", `${list.length} clientes para reativar · potencial estimado ${brl(totalPot)}`,'');
 
   app.innerHTML=`
-  <div class="card" style="margin-bottom:16px">
-    <div class="card-h"><h3>Como funciona</h3></div>
-    <div style="padding:14px 16px;color:var(--ink-2);font-size:13px">
-      A recompra é disparada por três gatilhos, em ordem de urgência:
-      <span class="chip alert" style="margin:0 4px">Receita vencida</span>
-      <span class="chip warn" style="margin:0 4px">Receita vencendo (≤60d)</span>
-      <span class="chip neutral" style="margin:0 4px">Ciclo de compra (≥${DB.config.cicloRecompraMeses}m)</span>
-      — parâmetros ajustáveis em <a onclick="go('config')" style="cursor:pointer">Config</a>.
-    </div>
-  </div>
-
   <div class="toolbar">
     <div class="seg">
       ${['todos','alert','warn','soon'].map(f=>`<button class="${state.filtroRec===f?'on':''}" onclick="state.filtroRec='${f}';renderRecompra(document.getElementById('app'))">${
         f==='todos'?'Todos':f==='alert'?'Vencidas':f==='warn'?'Vencendo':'Ciclo'}</button>`).join("")}
     </div>
-    <div class="spacer" style="flex:1"></div>
-    <span class="muted" style="font-size:12.5px">Ordenados por urgência</span>
   </div>
 
-  <div class="card"><table>
+  <div class="card"><table class="resp">
     <thead><tr><th>Cliente</th><th>Motivo</th><th>Última compra</th><th>Ticket médio</th><th>Ação</th></tr></thead>
     <tbody>${list.filter(x=>state.filtroRec==='todos'||x.info.status===state.filtroRec).map(x=>{
       const {c,info}=x; const cls=info.status==="alert"?"alert":info.status==="warn"?"warn":"neutral";
@@ -1714,29 +1773,42 @@ function renderRecompra(app){
         <td class="row-click" onclick="abrirCliente('${c.id}')"><div class="who"><div class="avatar">${initials(c.nome)}</div>
           <div><div class="strong">${c.nome}</div><div class="muted" style="font-size:12px">${info.rx?info.rx.tipo:'sem receita'} · ${c.telefone}</div></div></div></td>
         <td><span class="chip ${cls}">${info.motivo}</span></td>
-        <td class="num">${fmtDate(info.ultima)}</td>
-        <td class="num">${tk?brl(tk):'—'}</td>
+        <td class="num so-desk">${fmtDate(info.ultima)}</td>
+        <td class="num so-desk">${tk?brl(tk):'—'}</td>
         <td><div style="display:flex;gap:6px">
           <a class="btn wa sm" target="_blank" href="${waLink(c.telefone,msgRecompra(c,info))}">WhatsApp</a>
           <button class="btn sm" onclick="modalNegocio(null,'${c.id}')">Abrir negócio</button>
         </div></td>
-      </tr>`; }).join("") || `<tr><td colspan="5">${emptyBox('Nada nesse filtro. 👌')}</td></tr>`}</tbody>
+      </tr>`; }).join("") || `<tr><td colspan="5">${emptyBox('Nenhum cliente neste filtro.')}</td></tr>`}</tbody>
   </table></div>
 
   ${anivs.length?`<div class="card" style="margin-top:16px">
     <div class="card-h"><h3>Aniversariantes (30 dias)</h3><span class="count">${anivs.length}</span></div>
-    <table><tbody>${anivs.map(a=>`<tr>
+    <table class="resp"><tbody>${anivs.map(a=>`<tr>
       <td class="row-click" onclick="abrirCliente('${a.c.id}')"><div class="who"><div class="avatar">${initials(a.c.nome)}</div>
-        <div><div class="strong">${a.c.nome}</div><div class="muted" style="font-size:12px">faz ${a.idade+ (a.dias===0?'':' em breve')} anos</div></div></div></td>
-      <td><span class="chip ${a.dias===0?'accent':'neutral'}">${a.dias===0?'Hoje 🎉':'em '+a.dias+' dias'}</span></td>
-      <td style="text-align:right"><a class="btn wa sm" target="_blank" href="${waLink(a.c.telefone,'Feliz aniversário, '+a.c.nome.split(' ')[0]+'! 🎉 A '+DB.config.nome+' preparou um presente pra você.')}">Parabenizar</a></td>
+        <div><div class="strong">${a.c.nome}</div><div class="muted" style="font-size:12px">${a.dias===0?'faz':'vai fazer'} ${a.idade} anos</div></div></div></td>
+      <td><span class="chip ${a.dias===0?'accent':'neutral'}">${a.dias===0?'Hoje':'em '+plural(a.dias,'dia','dias')}</span></td>
+      <td style="text-align:right">${parabensRecompra(a)}</td>
     </tr>`).join("")}</tbody></table></div>`:''}`;
+}
+/* Com a etapa Aniversário ligada, os parabéns passam pela régua: assim o envio
+   fica registrado e ninguém manda de novo pela tela de Follow-up. Antes do dia,
+   não há botão, porque a régua oferece a mensagem na data. */
+function parabensRecompra(a){
+  const regua=fuCfg().regras.some(r=>r.ativo && r.gatilho==="aniversario");
+  if(!regua) return `<a class="btn wa sm" target="_blank" rel="noopener" href="${waLink(a.c.telefone,'Feliz aniversário, '+primeiroNome(a.c.nome)+'!\n\n'+DB.config.nome)}">Parabenizar</a>`;
+  if(a.c.optout) return `<span class="muted" style="font-size:12px">não recebe mensagens</span>`;
+  const p=fuPendentes(); const e=p.hoje.concat(p.seguros).find(x=>x.cliente.id===a.c.id && x.regra.gatilho==="aniversario");
+  if(e) return `<button class="btn wa sm" onclick="fuRevisar('${e.id}')">Parabenizar</button>`;
+  const ja=fuLista().some(f=>f.clienteId===a.c.id && (fuRegra(f.regra)||{}).gatilho==="aniversario" && f.feitoEm===hojeISO());
+  return `<span class="muted" style="font-size:12px">${ja?"parabéns registrados hoje":"a régua envia no dia"}</span>`;
 }
 function msgRecompra(c,info){
   const nome=c.nome.split(' ')[0];
-  if(info.status==="alert") return `Olá, ${nome}! Sua receita conosco está vencida — vale a pena atualizar o exame para conferir se o grau mudou. Posso agendar um horário? — ${DB.config.nome}`;
-  if(info.diasRx!==null&&info.diasRx<=60&&info.diasRx>=0) return `Olá, ${nome}! Sua receita vence em breve. Que tal já renovar seu exame e garantir a visão em dia? — ${DB.config.nome}`;
-  return `Olá, ${nome}! Já faz um tempinho da sua última troca de óculos. Chegaram novidades e sua garantia/receita merece uma revisão. Passa aqui pra gente conferir? — ${DB.config.nome}`;
+  const ass=`\n\n${DB.config.nome}`;
+  if(info.status==="alert") return `Olá, ${nome}! Sua receita está vencida. Vale refazer o exame para conferir se o grau mudou. Posso agendar um horário?`+ass;
+  if(info.diasRx!==null&&info.diasRx<=60&&info.diasRx>=0) return `Olá, ${nome}! Sua receita vence em breve. Quer já marcar o novo exame?`+ass;
+  return `Olá, ${nome}! Faz um tempo desde a sua última troca de óculos. Quer passar aqui para conferir o ajuste e as lentes?`+ass;
 }
 
 /* ---------------- PRODUTOS ---------------- */
@@ -1748,18 +1820,18 @@ function renderProdutos(app){
   app.innerHTML=`
   <div class="toolbar"><div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
     <input placeholder="Buscar produto ou marca…" value="${state.buscaProd}" oninput="state.buscaProd=this.value;renderProdutos(document.getElementById('app'))"></div></div>
-  <div class="card"><table>
+  <div class="card"><table class="resp">
     <thead><tr><th>Produto</th><th>Categoria</th><th>Marca</th><th style="text-align:right">Preço</th><th style="text-align:right">Margem</th><th style="text-align:right">Estoque</th><th></th></tr></thead>
     <tbody>${list.map(p=>{ const margem=p.preco&&p.custo!=null? (p.preco-p.custo)/p.preco*100:null;
       const low=typeof p.estoque==="number"&&p.estoque<=3;
       return `<tr class="row-click" onclick="modalProduto('${p.id}')">
         <td class="strong">${p.nome}</td>
         <td><span class="chip neutral">${p.categoria}</span></td>
-        <td>${p.marca||'—'}</td>
+        <td class="so-desk">${p.marca||'—'}</td>
         <td style="text-align:right" class="num strong">${brl(p.preco)}</td>
-        <td style="text-align:right" class="num">${margem!=null?margem.toFixed(0)+'%':'—'}</td>
-        <td style="text-align:right" class="num">${typeof p.estoque==="number"?`<span class="${low?'chip alert':''}">${p.estoque}</span>`:'—'}</td>
-        <td style="text-align:right"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#6b7885" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg></td>
+        <td style="text-align:right" class="num so-desk">${margem!=null?margem.toFixed(0)+'%':'—'}</td>
+        <td style="text-align:right" class="num">${typeof p.estoque==="number"?`<span class="${low?'chip alert':''}">${p.estoque}<span class="so-cel"> em estoque</span></span>`:'—'}</td>
+        <td style="text-align:right" class="so-desk"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#6b7885" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg></td>
       </tr>`; }).join("")||`<tr><td colspan="7">${emptyBox('Nenhum produto.')}</td></tr>`}</tbody>
   </table></div>`;
 }
@@ -1768,28 +1840,28 @@ function renderProdutos(app){
 function renderAgenda(app){
   const pend=tarefasPendentes().sort((a,b)=>a.venceEm<b.venceEm?-1:1);
   const feitas=DB.tarefas.filter(t=>t.feito).sort((a,b)=>a.venceEm<b.venceEm?1:-1).slice(0,20);
-  setHeader("Agenda & follow-ups", pend.length+" pendentes · "+tarefasVencidas().length+" vencidas",
+  setHeader("Agenda", plural(pend.length,"pendente","pendentes")+" · "+plural(tarefasVencidas().length,"vencida","vencidas"),
     `<button class="btn primary" onclick="modalTarefa()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>Nova tarefa</button>`);
   const grp=(ts)=>ts.map(t=>{ const c=cliente(t.clienteId); const venc=d(t.venceEm)<today();
     return `<tr>
       <td style="width:26px"><input type="checkbox" ${t.feito?'checked':''} onchange="toggleTarefa('${t.id}')"></td>
       <td><div class="strong" style="${t.feito?'text-decoration:line-through;color:var(--ink-3)':''}">${t.titulo}</div>
         <div class="muted" style="font-size:12px">${c?c.nome:'—'} · ${tarefaTipoLabel(t.tipo)}</div></td>
-      <td style="text-align:right"><span class="chip ${t.feito?'ok':venc?'alert':'neutral'}">${fmtDate(t.venceEm)}</span></td>
-      <td style="text-align:right;width:56px">${c?`<a class="btn wa sm" target="_blank" href="${waLink(c.telefone,'Olá, '+c.nome.split(' ')[0]+'!')}">wa</a>`:''}</td>
+      <td style="text-align:right">${dataTxt(t.venceEm,!t.feito&&venc)}</td>
+      <td style="text-align:right;width:90px">${c?`<a class="btn wa sm" target="_blank" href="${waLink(c.telefone,'Olá, '+c.nome.split(' ')[0]+'!')}">WhatsApp</a>`:''}</td>
     </tr>`; }).join("");
   app.innerHTML=`
   ${renderFila()}
   <div class="card" style="margin-bottom:16px"><div class="card-h"><h3>Pendentes</h3><span class="count">${pend.length}</span></div>
-    ${pend.length?`<table><tbody>${grp(pend)}</tbody></table>`:emptyBox('Tudo em dia. Nenhuma tarefa pendente.')}</div>
-  ${feitas.length?`<div class="card"><div class="card-h"><h3>Concluídas recentes</h3></div><table><tbody>${grp(feitas)}</tbody></table></div>`:''}`;
+    ${pend.length?`<table class="resp resp-check"><tbody>${grp(pend)}</tbody></table>`:emptyBox('Tudo em dia. Nenhuma tarefa pendente.')}</div>
+  ${feitas.length?`<div class="card"><div class="card-h"><h3>Concluídas recentes</h3></div><table class="resp resp-check"><tbody>${grp(feitas)}</tbody></table></div>`:''}`;
 }
 
 function renderFila(){
   const fila=filaTrabalho();
   if(!fila.length) return `<div class="card" style="margin-bottom:16px">
     <div class="card-h"><h3>Fila de trabalho</h3></div>
-    ${emptyBox('Nada exige ação hoje — nenhum atraso, receita vencida ou óculos parado.')}</div>`;
+    ${emptyBox('Nada exige ação hoje: nenhum atraso, receita vencida ou óculos parado.')}</div>`;
 
   const maxPeso=Math.max(...fila.map(i=>i.peso))||1;
   const cor={alert:"var(--alert)",warn:"var(--warn)",ok:"var(--ok)",neutral:"var(--ink-3)",accent:"var(--accent)"};
@@ -1801,8 +1873,8 @@ function renderFila(){
     // barra pese mais no olho do que o próprio fato.
     const alt=Math.max(18,Math.round(i.peso/maxPeso*100));
     const wa = c && !i.semWa ? `<a class="btn wa sm" target="_blank" rel="noopener"
-      href="${waLink(c.telefone,'Olá, '+c.nome.split(' ')[0]+'!')}">wa</a>` : '';
-    const ficha = c ? `<button class="btn sm ghost" onclick="abrirCliente('${c.id}')">ficha</button>` : '';
+      href="${waLink(c.telefone,'Olá, '+c.nome.split(' ')[0]+'!')}">WhatsApp</a>` : '';
+    const ficha = c ? `<button class="btn sm ghost" onclick="abrirCliente('${c.id}')">Ficha</button>` : '';
     return `<div class="fila-item">
       <div class="fila-peso" style="background:${cor[i.tom]||cor.neutral};opacity:.55;height:${alt}%"></div>
       <div style="min-width:0">
@@ -1818,7 +1890,7 @@ function renderFila(){
 
   return `<div class="card" style="margin-bottom:16px">
     <div class="card-h"><h3>Fila de trabalho</h3><span class="count">${fila.length} ${fila.length===1?'item':'itens'}</span></div>
-    <div class="fila-legenda">Uma lista só, atravessando tarefas, recompra, oficina, crediário, funil, follow-up e aniversários — ordenada por evidência.
+    <div class="fila-legenda">Uma lista só, atravessando tarefas, recompra, oficina, crediário, funil, follow-up e aniversários, ordenada por evidência.
       O <b>fato</b> é o que está no banco e você pode conferir. A <b>sugestão</b> é opinião do sistema: discorde dela à vontade.</div>
     ${linhas}</div>`;
 }
@@ -1849,7 +1921,7 @@ function renderFollowup(app){
   const hj=hojeISO();
   const enviadosHoje=fuLista().filter(f=>f.feitoEm===hj && f.status==="enviado").length;
   setHeader("Follow-up",
-    `${p.hoje.length} para hoje · ${p.seguros.length} aguardando intervalo · ${enviadosHoje} ${enviadosHoje===1?"enviado":"enviados"} hoje`,
+    `${p.hoje.length} para hoje${enviadosHoje?` · ${enviadosHoje} ${enviadosHoje===1?"enviado":"enviados"} hoje`:""}`,
     aba==="hoje" && p.hoje.length
       ? `<button class="btn primary" onclick="fuSequencia()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>Enviar em sequência</button>`
       : "");
@@ -1972,11 +2044,10 @@ function fuTelaResultados(){
     </tr>`;
   }).join("");
   return `
-  <div class="grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px" id="fuKpis">
+  <div class="grid kpis3" style="margin-bottom:16px" id="fuKpis">
     ${kpi("Enviadas 90d", tEnv, `<span class="muted" style="font-size:12px">${tPul} puladas</span>`)}
     ${kpi("Voltaram e compraram", R.vendas, `<span class="muted" style="font-size:12px">em até 30 dias</span>`)}
     ${kpi("Vendas depois da mensagem", brlShort(R.valor), `<span class="muted" style="font-size:12px">sem contar em dobro</span>`)}
-    ${kpi("Para hoje", fuPendentes().hoje.length, `<span class="muted" style="font-size:12px">na fila agora</span>`)}
   </div>
   <div class="card"><div class="card-h"><h3>Por etapa</h3><span class="count">últimos 90 dias</span></div>
     <div class="fila-legenda">“Voltou e comprou” conta venda fechada pelo mesmo cliente em até 30 dias depois da mensagem.
@@ -2005,7 +2076,7 @@ function fuPular(id){
 function fuDesfazer(fid){
   if(!podeAdmin()){ toast("Só o administrador desfaz registros."); return; }
   DB.followups=fuLista().filter(f=>f.id!==fid);
-  salvar({_remover:{followups:[fid]}}); render(); toast("Registro desfeito — a etapa volta para a fila.");
+  salvar({_remover:{followups:[fid]}}); render(); toast("Registro desfeito. A etapa volta para a fila.");
 }
 
 /* Revisar: editar o texto antes de mandar. Em sequência, o próximo
@@ -2022,13 +2093,13 @@ function fuRevisar(id, restantes){
   const e=fuAchar(id); if(!e){ toast("Esse follow-up já foi registrado."); render(); return; }
   if(!restantes) fuSeq=false;
   const c=e.cliente, txt=fuTexto(e), tel=!!onlyDigits(c.telefone);
-  openModal(`<div class="modal"><div class="modal-h"><h3>${fuSeq?"Sequência — ":""}${escFila(c.nome)}</h3>
+  openModal(`<div class="modal"><div class="modal-h"><h3>${fuSeq?"Sequência · ":""}${escFila(c.nome)}</h3>
       ${fuSeq?`<span class="chip neutral" style="margin-left:8px">${plural(restantes,"restante","restantes")}</span>`:""}
       <button class="close-x" onclick="fuSeq=false;closeModal();render()">×</button></div>
     <div class="modal-b">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
         <span class="chip accent">${escFila(e.regra.nome)}</span><span class="muted" style="font-size:12.5px">${fuQuando(e)}</span>
-        ${e.libera?`<span class="chip warn">recebeu mensagem há pouco — libera em ${e.libera.toLocaleDateString("pt-BR")}</span>`:""}
+        ${e.libera?`<span class="chip warn">recebeu mensagem há pouco, libera em ${e.libera.toLocaleDateString("pt-BR")}</span>`:""}
       </div>
       <div class="field"><label>Mensagem</label>
         <textarea id="fuMsg" rows="6" oninput="fuAtualizaLink()">${escFila(txt)}</textarea></div>
@@ -2185,7 +2256,10 @@ function fuCardCliente(c){
 
 /* ---------------- CONFIG ---------------- */
 function renderConfig(app){
-  setHeader("Configurações","Parâmetros do negócio, metas e backup",'');
+  // Um botão só: os dois cartões gravam a mesma config, e dois "Salvar"
+  // primários faziam parecer que cada um guardava só a sua metade.
+  setHeader("Configurações","",
+    podeAdmin()?`<button class="btn primary" onclick="salvarConfig()">Salvar alterações</button>`:"");
   const cf=DB.config;
   app.innerHTML=`
   <div class="grid" style="grid-template-columns:1fr 1fr">
@@ -2195,15 +2269,13 @@ function renderConfig(app){
         <div class="field"><label>Meta mensal (R$)</label><input id="cfMeta" type="number" value="${cf.metaMes}"></div>
         <div class="field"><label>DDI (WhatsApp)</label><input id="cfDdi" value="${cf.ddi}"></div>
       </div>
-      <button class="btn primary" onclick="salvarConfig()">Salvar</button>
     </div></div>
     <div class="card"><div class="card-h"><h3>Motor de recompra</h3></div><div class="modal-b">
       <div class="frow">
         <div class="field"><label>Ciclo de recompra (meses)</label><input id="cfCiclo" type="number" value="${cf.cicloRecompraMeses}"></div>
         <div class="field"><label>Validade padrão da receita (meses)</label><input id="cfVal" type="number" value="${cf.validadePadrao}"></div>
       </div>
-      <p class="muted" style="font-size:12.5px">O ciclo define quando um cliente sem receita vencendo ainda entra em recompra por tempo desde a última compra.</p>
-      <button class="btn primary" onclick="salvarConfig()">Salvar</button>
+      <p class="muted" style="font-size:12.5px;margin:0">Ciclo: meses desde a última compra para um cliente com receita em dia entrar na recompra.</p>
     </div></div>
     <div class="card"><div class="card-h"><h3>Backup & dados</h3></div><div class="modal-b">
       <p class="muted" style="font-size:12.5px;margin-top:0">Os dados ficam no banco da loja e são os mesmos em todos os aparelhos. O Cloudflare faz cópia do banco, mas um backup seu, fora da conta, não custa nada.</p>
@@ -2221,7 +2293,7 @@ function renderConfig(app){
       ${podeAdmin()&&bancoVazioNaLoja()?`
         <div style="margin-top:14px;border-top:1px solid var(--line-soft);padding-top:12px">
           <button class="btn" onclick="popularExemplo()">Popular com dados de exemplo</button>
-          <p class="muted" style="font-size:12px;margin:8px 0 0">Só aparece enquanto a base está vazia — serve para conhecer o sistema antes de cadastrar de verdade.</p>
+          <p class="muted" style="font-size:12px;margin:8px 0 0">Só aparece enquanto a base está vazia, para conhecer o sistema antes de cadastrar de verdade.</p>
         </div>`:''}
     </div></div>
     <div class="card"><div class="card-h"><h3>Aparência</h3></div><div class="modal-b">
@@ -2230,14 +2302,13 @@ function renderConfig(app){
         // Dizer só "ligado/desligado" esconderia o motivo quando o usuário pede
         // vidro e não vê vidro. O estado real e a causa vêm juntos.
         const causa = !quer ? "Você desligou aqui."
-                    : !sup ? "Este navegador não suporta o efeito — as superfícies ficam sólidas."
+                    : !sup ? "Este navegador não suporta o efeito."
                     : red  ? "Seu sistema está configurado para reduzir transparência, e isso tem precedência."
                            : "";
         return `
         <label style="display:flex;align-items:center;gap:10px;font-size:13.5px;font-weight:600;cursor:pointer">
           <input type="checkbox" ${quer?'checked':''} onchange="toggleVidro()"> Vidro translúcido
         </label>
-        <p class="muted" style="font-size:12.5px;margin:9px 0 0">Aplica desfoque e translucidez à barra superior, aos modais e ao aviso de rodapé. Nunca ao conteúdo: tabela e número precisam de fundo opaco para serem lidos.</p>
         <div style="margin-top:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <span class="chip ${vale?'accent':'neutral'}">${vale?'Ativo agora':'Sólido agora'}</span>
           ${causa?`<span class="muted" style="font-size:12px">${causa}</span>`:''}
@@ -2245,9 +2316,8 @@ function renderConfig(app){
       })()}
     </div></div>
     <div class="card"><div class="card-h"><h3>Sobre o Íris</h3></div><div class="modal-b" style="font-size:13px;color:var(--ink-2)">
-      <p style="margin-top:0">CRM de arquivo único, específico para óticas. Roda offline e é hospedável no Cloudflare Pages.</p>
-      <p><b>O que ele faz diferente de um CRM genérico:</b> modela a <b>receita com validade</b> e o <b>ciclo de troca de óculos</b>, transformando isso em fila de recompra automática — a maior alavanca de faturamento de uma ótica.</p>
-      <p class="muted" style="font-size:12px">v1 · dados locais (LGPD-friendly)</p>
+      <p style="margin-top:0">CRM para óticas. Os dados ficam no banco da loja e são os mesmos em todos os aparelhos. Sem internet, o Íris abre a última cópia e guarda as alterações até a conexão voltar.</p>
+      <p style="margin-bottom:0">Ele registra a <b>validade da receita</b> e o <b>ciclo de troca de óculos</b>. É daí que saem a fila de recompra e a régua de follow-up.</p>
     </div></div>
   </div>`;
 }
@@ -2292,7 +2362,7 @@ function importJSON(e){
 }
 async function popularExemplo(){
   if(!podeAdmin()){ toast("Só o administrador pode fazer isso."); return; }
-  if(!bancoVazioNaLoja()){ toast("A base já tem registros — o exemplo só entra em base vazia."); return; }
+  if(!bancoVazioNaLoja()){ toast("A base já tem registros. O exemplo só entra em base vazia."); return; }
   if(!confirm("Preencher o banco da loja com clientes e vendas de exemplo?\n\nSão dados fictícios, para você conhecer o sistema. Dá para excluí-los depois.")) return;
   const demo=seed();
   const chaves=["clientes","receitas","produtos","negocios","tarefas","os","parcelas"];
@@ -2314,7 +2384,7 @@ async function importarParaOBanco(data, total){
     }
     if(data.config) await api({acao:"gravar", mudancas:{config:data.config}});
     await carregarDados(); render();
-    toast(`Backup importado — ${total} registros no banco da loja.`);
+    toast(`Backup importado: ${total} registros no banco da loja.`);
   }catch(err){
     toast("Falha ao importar: "+(err.message||"erro desconhecido"));
   }
@@ -2373,7 +2443,7 @@ function modalReceita(id,clienteId){
     <td><input id="rx_${lado}_esf" value="${o.esf||''}" placeholder="+0.00"></td>
     <td><input id="rx_${lado}_cil" value="${o.cil||''}" placeholder="-0.00"></td>
     <td><input id="rx_${lado}_eixo" value="${o.eixo||''}" placeholder="0-180"></td></tr>`;
-  openModal(`<div class="modal"><div class="modal-h"><h3>${id?'Editar receita':'Nova receita'} — ${cliente(cid)?.nome||''}</h3><button class="close-x" onclick="closeModal()">×</button></div>
+  openModal(`<div class="modal"><div class="modal-h"><h3>${id?'Editar receita':'Nova receita'} · ${cliente(cid)?.nome||''}</h3><button class="close-x" onclick="closeModal()">×</button></div>
     <div class="modal-b">
       <div class="frow"><div class="field"><label>Data</label><input id="rxData" type="date" value="${r.data}"></div>
         <div class="field"><label>Tipo</label><select id="rxTipo">${RX_TIPOS.map(t=>`<option ${r.tipo===t?'selected':''}>${t}</option>`).join("")}</select></div></div>
@@ -2443,7 +2513,7 @@ function modalNegocio(id,clienteId){
   openModal(`<div class="modal wide"><div class="modal-h"><h3>${id?'Editar negócio':'Novo negócio'}</h3><button class="close-x" onclick="closeModal()">×</button></div>
     <div class="modal-b">
       <div class="frow"><div class="field"><label>Cliente</label><select id="ngCli" onchange="onChangeCliNeg()">
-        <option value="">— selecione —</option>${DB.clientes.map(c=>`<option value="${c.id}" ${c.id===cid?'selected':''}>${c.nome}</option>`).join("")}</select></div>
+        <option value="">Selecione</option>${DB.clientes.map(c=>`<option value="${c.id}" ${c.id===cid?'selected':''}>${c.nome}</option>`).join("")}</select></div>
         <div class="field"><label>Título</label><input id="ngTit" value="${n.titulo}" placeholder="Ex.: Óculos multifocal"></div></div>
       <div class="frow-3">
         <div class="field"><label>Etapa</label><select id="ngEtapa">${STAGES.map(s=>`<option value="${s.id}" ${n.etapa===s.id?'selected':''}>${s.nome}</option>`).join("")}</select></div>
@@ -2451,12 +2521,12 @@ function modalNegocio(id,clienteId){
         <div class="field"><label>Prioridade</label><select id="ngPrio">${[["alta","Alta"],["media","Média"],["baixa","Baixa"]].map(p=>`<option value="${p[0]}" ${n.prioridade===p[0]?'selected':''}>${p[1]}</option>`).join("")}</select></div>
       </div>
       <div class="field" id="ngRxWrap" style="${rxOpts.length?'':'display:none'}"><label>Vincular receita</label>
-        <select id="ngRx"><option value="">— nenhuma —</option>${rxOpts.map(r=>`<option value="${r.id}" ${n.receitaId===r.id?'selected':''}>${r.tipo} · ${fmtDate(r.data)}</option>`).join("")}</select></div>
+        <select id="ngRx"><option value="">Nenhuma</option>${rxOpts.map(r=>`<option value="${r.id}" ${n.receitaId===r.id?'selected':''}>${r.tipo} · ${fmtDate(r.data)}</option>`).join("")}</select></div>
 
       <div class="field"><label>Itens</label>
         <div style="display:flex;gap:8px;margin-bottom:8px">
           <select id="ngProd" style="flex:1;padding:8px 10px;border:1px solid var(--line);border-radius:9px">
-            ${DB.produtos.map(p=>`<option value="${p.id}">${p.nome} — ${brl(p.preco)}</option>`).join("")}</select>
+            ${DB.produtos.map(p=>`<option value="${p.id}">${p.nome} · ${brl(p.preco)}</option>`).join("")}</select>
           <button class="btn" onclick="addItem()">Adicionar</button>
         </div>
         <table class="items-tbl"><tbody id="ngItens"></tbody></table>
@@ -2471,7 +2541,7 @@ function modalNegocio(id,clienteId){
 }
 function onChangeCliNeg(){ const cid=$("#ngCli").value; const rxOpts=DB.receitas.filter(r=>r.clienteId===cid);
   const wrap=$("#ngRxWrap"); wrap.style.display=rxOpts.length?"":"none";
-  $("#ngRx").innerHTML=`<option value="">— nenhuma —</option>`+rxOpts.map(r=>`<option value="${r.id}">${r.tipo} · ${fmtDate(r.data)}</option>`).join(""); }
+  $("#ngRx").innerHTML=`<option value="">Nenhuma</option>`+rxOpts.map(r=>`<option value="${r.id}">${r.tipo} · ${fmtDate(r.data)}</option>`).join(""); }
 function addItem(){ const pid=$("#ngProd").value; const p=produto(pid); if(!p)return;
   const ex=tmpItens.find(i=>i.produtoId===pid); if(ex) ex.qtd++; else tmpItens.push({produtoId:pid,qtd:1,preco:p.preco}); renderItens(); }
 function renderItens(){
@@ -2513,7 +2583,7 @@ function modalTarefa(){
   openModal(`<div class="modal"><div class="modal-h"><h3>Nova tarefa</h3><button class="close-x" onclick="closeModal()">×</button></div>
     <div class="modal-b">
       <div class="field"><label>Título</label><input id="tkTit" placeholder="Ex.: Ligar confirmando adaptação"></div>
-      <div class="frow"><div class="field"><label>Cliente</label><select id="tkCli"><option value="">— nenhum —</option>${DB.clientes.map(c=>`<option value="${c.id}">${c.nome}</option>`).join("")}</select></div>
+      <div class="frow"><div class="field"><label>Cliente</label><select id="tkCli"><option value="">Nenhum</option>${DB.clientes.map(c=>`<option value="${c.id}">${c.nome}</option>`).join("")}</select></div>
         <div class="field"><label>Tipo</label><select id="tkTipo">${[["ligacao","Ligação"],["whatsapp","WhatsApp"],["posvenda","Pós-venda"],["recompra","Recompra"],["geral","Geral"]].map(t=>`<option value="${t[0]}">${t[1]}</option>`).join("")}</select></div></div>
       <div class="field"><label>Vence em</label><input id="tkData" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
     </div>
@@ -2541,7 +2611,7 @@ function modalFecharVenda(nid){
   const temLente=n.itens.some(i=>{const p=produto(i.produtoId);return p&&p.categoria==="Lente";});
   const hoje=new Date().toISOString().slice(0,10);
   const prev=new Date(); prev.setDate(prev.getDate()+(DB.config.prazoLabDias||7));
-  openModal(`<div class="modal wide"><div class="modal-h"><h3>Fechar venda — ${c?c.nome:''}</h3><button class="close-x" onclick="closeModal()">×</button></div>
+  openModal(`<div class="modal wide"><div class="modal-h"><h3>Fechar venda · ${c?c.nome:''}</h3><button class="close-x" onclick="closeModal()">×</button></div>
     <div class="modal-b">
       <div style="background:var(--accent-wash);border-radius:10px;padding:11px 13px;margin-bottom:16px;display:flex;align-items:center">
         <div><div style="font-size:12px;color:var(--accent-ink);font-weight:700">${n.titulo}</div>
@@ -2613,7 +2683,7 @@ function confirmarVenda(nid){
   salvar({ negocios:[n], tarefas:tocado.tarefas, os:novasOS,
            produtos:tocado.produtos, parcelas:novasParcelas });
   closeModal(); render();
-  toast("Venda fechada! 🎉 " + ($("#fvTemOS")?.checked?"OS criada · ":"") + "pós-venda agendado.");
+  toast("Venda fechada. " + ($("#fvTemOS")?.checked?"OS criada, ":"") + "pós-venda agendado.");
 }
 
 /* --- Oficina: acompanhamento das ordens de serviço --- */
@@ -2621,7 +2691,7 @@ function renderOficina(app){
   const abertas=DB.os.filter(o=>o.status!=="entregue");
   const atrasadas=abertas.filter(o=>o.previsaoEm && d(o.previsaoEm)<today() && o.status!=="pronto");
   setHeader("Oficina", `${abertas.length} ordens em andamento${atrasadas.length?` · <b style="color:var(--alert)">${atrasadas.length} atrasadas no laboratório</b>`:''}`,'');
-  app.innerHTML=`<div class="board">${OS_STATUS.map(st=>{
+  app.innerHTML=`<div class="board-wrap"><div class="board">${OS_STATUS.map(st=>{
     const list=DB.os.filter(o=>o.status===st.id)
       .sort((a,b)=>(a.previsaoEm||'')<(b.previsaoEm||'')?-1:1)
       .slice(0, st.id==="entregue"?12:99);
@@ -2630,7 +2700,8 @@ function renderOficina(app){
         <span class="c num">${DB.os.filter(o=>o.status===st.id).length}</span>
         <span class="sum">${st.id==="entregue"?"últimas 12":"&nbsp;"}</span></div>
       <div class="col-body">${list.map(o=>osCard(o)).join("")||'<div class="muted" style="font-size:12px;padding:10px;text-align:center">—</div>'}</div>
-    </div>`;}).join("")}</div>`;
+    </div>`;}).join("")}</div><button class="board-mais" onclick="rolarBoard(this)"></button></div>`;
+  marcarBordas();
   _movido=null; _colRecebeu=null;
 }
 function osCard(o){
@@ -2643,7 +2714,7 @@ function osCard(o){
     <div style="display:flex;align-items:center;gap:6px">
       <span class="chip neutral" style="font-size:10.5px">OS ${o.numero}</span>
       ${atrasada?`<span class="chip alert" style="font-size:10.5px">${Math.abs(dias)}d atrasada</span>`
-        :dias!==null&&o.status!=="entregue"?`<span class="chip ${dias<=1?'warn':'neutral'}" style="font-size:10.5px">${dias>=0?'chega em '+dias+'d':'—'}</span>`:''}
+        :dias!==null&&dias>=0&&o.status!=="entregue"?`<span class="chip ${dias<=1?'warn':'neutral'}" style="font-size:10.5px">chega em ${dias}d</span>`:''}
     </div>
     <div class="t" style="margin-top:5px">${c?c.nome:'—'}</div>
     <div class="cl">${n?n.titulo:''} · ${o.laboratorio||'—'}</div>
@@ -2673,7 +2744,7 @@ function avancarOS(id){
 /* --- Financeiro: crediário e cobrança --- */
 function renderFinanceiro(app){
   const atras=parcelasAtrasadas(), abertas=parcelasAbertas();
-  setHeader("Financeiro", `${abertas.length} parcelas em aberto · ${atras.length} vencidas`,'');
+  setHeader("Financeiro", "", "");
   const hoje=today();
   const prox30=abertas.filter(p=>{const x=d(p.venceEm);return x>=hoje && daysUntil(x)<=30;});
   const linha=(p)=>{ const c=cliente(p.clienteId); const venc=d(p.venceEm)<hoje;
@@ -2682,31 +2753,31 @@ function renderFinanceiro(app){
       <td class="row-click" onclick="abrirCliente('${p.clienteId}')"><div class="who"><div class="avatar">${c?initials(c.nome):'?'}</div>
         <div><div class="strong">${c?c.nome:'—'}</div><div class="muted" style="font-size:12px">${p.forma} · parcela ${p.n}/${p.total}</div></div></div></td>
       <td class="num strong">${brl(p.valor)}</td>
-      <td><span class="chip ${venc?'alert':'neutral'}">${fmtDate(p.venceEm)}${venc?` · ${dias}d`:''}</span></td>
+      <td>${venc?`<span class="chip alert">${fmtDate(p.venceEm)} · ${dias}d</span>`:dataTxt(p.venceEm,false)}</td>
       <td style="text-align:right"><div style="display:flex;gap:6px;justify-content:flex-end">
         ${c?`<a class="btn wa sm" target="_blank" href="${waLink(c.telefone, venc
-            ? `Olá, ${c.nome.split(' ')[0]}! Passando para lembrar da parcela ${p.n}/${p.total} de ${brl(p.valor)}, vencida em ${fmtDate(p.venceEm)}. Qualquer coisa a gente combina o melhor jeito. — ${DB.config.nome}`
-            : `Olá, ${c.nome.split(' ')[0]}! Lembrete da parcela ${p.n}/${p.total} de ${brl(p.valor)}, que vence em ${fmtDate(p.venceEm)}. — ${DB.config.nome}`)}">Cobrar</a>`:''}
+            ? `Olá, ${c.nome.split(' ')[0]}! Passando para lembrar da parcela ${p.n}/${p.total} de ${brl(p.valor)}, vencida em ${fmtDate(p.venceEm)}. Se precisar, a gente combina o melhor jeito.\n\n${DB.config.nome}`
+            : `Olá, ${c.nome.split(' ')[0]}! Lembrete da parcela ${p.n}/${p.total} de ${brl(p.valor)}, que vence em ${fmtDate(p.venceEm)}.\n\n${DB.config.nome}`)}">Cobrar</a>`:''}
         <button class="btn sm" onclick="receberParcela('${p.id}')">Receber</button></div></td></tr>`; };
   app.innerHTML=`
-  <div class="grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px">
+  <div class="grid kpis4" style="margin-bottom:16px">
     ${kpi("A receber", brlShort(aReceber()), `<span class="muted" style="font-size:12px">${abertas.length} parcelas</span>`)}
     ${kpi("Vencido", brlShort(atras.reduce((s,p)=>s+p.valor,0)), `<span class="delta ${atras.length?'down':'flat'}">${atras.length} em atraso</span>`)}
     ${kpi("Recebido no mês", brlShort(recebidoNoMes()), `<span class="muted" style="font-size:12px">${DB.parcelas.filter(p=>p.pagoEm&&mesKey(p.pagoEm)===curMonth()).length} baixas</span>`)}
     ${kpi("Vence em 30d", brlShort(prox30.reduce((s,p)=>s+p.valor,0)), `<span class="muted" style="font-size:12px">${prox30.length} parcelas</span>`)}
   </div>
   <div class="card" style="margin-bottom:16px"><div class="card-h"><h3>Em atraso</h3><span class="count">${atras.length}</span></div>
-    ${atras.length?`<table><thead><tr><th>Cliente</th><th>Valor</th><th>Venceu</th><th></th></tr></thead>
+    ${atras.length?`<table class="resp"><thead><tr><th>Cliente</th><th>Valor</th><th>Venceu</th><th></th></tr></thead>
       <tbody>${atras.sort((a,b)=>a.venceEm<b.venceEm?-1:1).map(linha).join("")}</tbody></table>`
-      :emptyBox('Nenhuma parcela em atraso. 👏')}</div>
+      :emptyBox('Nenhuma parcela em atraso.')}</div>
   <div class="card"><div class="card-h"><h3>A vencer</h3><span class="count">${abertas.length-atras.length}</span></div>
-    ${abertas.length-atras.length?`<table><thead><tr><th>Cliente</th><th>Valor</th><th>Vence</th><th></th></tr></thead>
+    ${abertas.length-atras.length?`<table class="resp"><thead><tr><th>Cliente</th><th>Valor</th><th>Vence</th><th></th></tr></thead>
       <tbody>${abertas.filter(p=>d(p.venceEm)>=hoje).sort((a,b)=>a.venceEm<b.venceEm?-1:1).map(linha).join("")}</tbody></table>`
       :emptyBox('Nada a vencer.')}</div>`;
 }
 function receberParcela(id){ const p=DB.parcelas.find(x=>x.id===id); if(!p)return;
   p.pagoEm=new Date().toISOString().slice(0,10); salvar({parcelas:[p]});
-  sairLinha(event, ()=>{ render(); toast("Parcela recebida — "+brl(p.valor)+"."); }); }
+  sairLinha(event, ()=>{ render(); toast("Parcela recebida: "+brl(p.valor)+"."); }); }
 
 /* A linha desaparece antes da lista se reorganizar: o usuário vê o que causou a mudança. */
 function sairLinha(ev, depois){
@@ -2765,7 +2836,7 @@ function talvezOferecerMigracao(){
     if(confirm("Este navegador tem dados de uma versão anterior do Íris, e o banco da loja está vazio.\n\nQuer enviar esses dados para o banco agora?"))
       migrarDoNavegador();
     else
-      toast("Tudo bem — dá para fazer depois em Config → Backup & dados.");
+      toast("Tudo bem. Dá para fazer depois em Config → Backup & dados.");
   }, 600);
 }
 
@@ -2781,7 +2852,7 @@ function telaLogin(erro){
     <form class="login-card" onsubmit="entrar(event)">
       <div class="mark"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#fff" stroke-width="1.6"/><circle cx="12" cy="12" r="3.4" fill="#fff"/></svg></div>
       <h2>Íris</h2>
-      <div class="sub">CRM da ótica — entre com seu usuário</div>
+      <div class="sub">Entre com seu usuário e senha</div>
       ${erro?`<div class="login-erro">${erro}</div>`:""}
       <div class="field"><label>Usuário</label>
         <input id="lgUser" autocomplete="username" autocapitalize="none" spellcheck="false" required></div>
@@ -2848,7 +2919,7 @@ async function boot(){
       DB = c; SESSAO = { logado:true, nome:"", papel:"vendedor" }; semRede = true;
       document.querySelector(".app").style.display = "";
       render(); marcarRede();
-      toast("Sem conexão — mostrando a última cópia salva neste aparelho.");
+      toast("Sem conexão. Mostrando a última cópia salva neste aparelho.");
       return;
     }
     telaLogin("Não foi possível falar com o servidor. Verifique a conexão.");

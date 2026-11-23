@@ -245,7 +245,7 @@ CREATE INDEX IF NOT EXISTS ix_followups_em      ON followups(feito_em);
 -- não abrir vazio antes da primeira gravação.
 -- ------------------------------------------------------------
 INSERT OR IGNORE INTO config (id, dados) VALUES (1, json_object(
-  'nome','Íris — Sua Ótica',
+  'nome','Sua ótica',
   'metaMes',7500,
   'cicloRecompraMeses',18,
   'validadePadrao',12,
